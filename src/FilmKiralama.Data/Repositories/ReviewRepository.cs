@@ -54,7 +54,7 @@ internal sealed class ReviewRepository(IDbContextFactory<FilmDbContext> contextF
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await Actors.RequireAsync(db, userId, admin: false, cancellationToken).ConfigureAwait(false);
         return await Rows(db)
-            .Where(r => r.Review.UserId == userId && r.Review.FilmId == filmId)
+            .Where(r => r.Review.UserId == userId && r.Review.FilmId == filmId && !r.Review.IsDeleted)
             .Select(Projection)
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -66,13 +66,20 @@ internal sealed class ReviewRepository(IDbContextFactory<FilmDbContext> contextF
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await Actors.RequireAsync(db, userId, admin: false, cancellationToken).ConfigureAwait(false);
 
-        // The owner is part of the condition: another account's review is the same as none.
-        var deleted = await db.Reviews
-            .Where(r => r.Id == reviewId && r.UserId == userId)
+        // The owner is part of the condition: another account's review is the same as none. The review is
+        // first marked deleted with its comment cleared, which also locks the row against a concurrent
+        // hide or show until the commit; then it is removed only if no admin hid it. A hidden review
+        // stays as a deleted row, so the author's next review of the film is hidden as well.
+        var marked = await db.Reviews
+            .Where(r => r.Id == reviewId && r.UserId == userId && !r.IsDeleted)
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.IsDeleted, true).SetProperty(r => r.Comment, (string?)null), cancellationToken)
+            .ConfigureAwait(false);
+        await db.Reviews
+            .Where(r => r.Id == reviewId && r.UserId == userId && !r.IsHidden)
             .ExecuteDeleteAsync(cancellationToken)
             .ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return deleted == 1;
+        return marked == 1;
     }
 
     public async Task<(IReadOnlyList<ReviewDetails> Reviews, RatingTotals Totals)> GetVisibleAsync(int filmId, int max, CancellationToken cancellationToken = default)
@@ -101,7 +108,7 @@ internal sealed class ReviewRepository(IDbContextFactory<FilmDbContext> contextF
         var query =
             from film in db.Films.AsNoTracking()
             where db.Rentals.Any(r => r.FilmId == film.Id && r.UserId == userId && r.Status == RentalStatus.Returned)
-            let own = db.Reviews.FirstOrDefault(r => r.FilmId == film.Id && r.UserId == userId)
+            let own = db.Reviews.FirstOrDefault(r => r.FilmId == film.Id && r.UserId == userId && !r.IsDeleted)
             orderby film.Title, film.Id
             select new ReviewableFilm(film.Id, film.Title, film.Genre, film.Year, own == null ? null : own.Id, own == null ? null : own.Rating);
         return await query.ToListAsync(cancellationToken).ConfigureAwait(false);
@@ -113,7 +120,7 @@ internal sealed class ReviewRepository(IDbContextFactory<FilmDbContext> contextF
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
-        var reviews = Rows(db).Where(r => !hiddenOnly || r.Review.IsHidden);
+        var reviews = Rows(db).Where(r => !r.Review.IsDeleted && (!hiddenOnly || r.Review.IsHidden));
         var total = await reviews.CountAsync(cancellationToken).ConfigureAwait(false);
         var current = Paging.ClampPage(page, total, pageSize);
         var items = await reviews
@@ -132,20 +139,27 @@ internal sealed class ReviewRepository(IDbContextFactory<FilmDbContext> contextF
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+        // A review its author deleted is missing here too, so it can never be shown again.
         var changed = await db.Reviews
-            .Where(r => r.Id == reviewId)
+            .Where(r => r.Id == reviewId && !r.IsDeleted)
             .ExecuteUpdateAsync(s => s.SetProperty(r => r.IsHidden, hidden), cancellationToken)
             .ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return changed == 1;
     }
 
-    /// <summary>Changes the account's review of the film, keeping whether it is hidden; <see langword="false"/> when there is none.</summary>
+    /// <summary>
+    /// Changes the account's review of the film, or takes back the one it deleted while hidden, keeping
+    /// whether it is hidden; <see langword="false"/> when there is none.
+    /// </summary>
     private static async Task<bool> UpdateAsync(FilmDbContext db, int userId, int filmId, int rating, string? comment, DateTime now, CancellationToken cancellationToken) =>
         await db.Reviews
             .Where(r => r.UserId == userId && r.FilmId == filmId)
             .ExecuteUpdateAsync(
-                s => s.SetProperty(r => r.Rating, rating).SetProperty(r => r.Comment, comment).SetProperty(r => r.UpdatedAt, now),
+                s => s.SetProperty(r => r.Rating, rating)
+                    .SetProperty(r => r.Comment, comment)
+                    .SetProperty(r => r.IsDeleted, false)
+                    .SetProperty(r => r.UpdatedAt, now),
                 cancellationToken)
             .ConfigureAwait(false) == 1;
 

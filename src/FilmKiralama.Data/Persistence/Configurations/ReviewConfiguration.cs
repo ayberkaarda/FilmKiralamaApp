@@ -17,6 +17,7 @@ internal sealed class ReviewConfiguration : IEntityTypeConfiguration<Review>
         builder.Property(r => r.Rating).HasColumnName("Puan");
         builder.Property(r => r.Comment).HasColumnName("Yorum").HasMaxLength(SchemaLimits.CommentLength);
         builder.Property(r => r.IsHidden).HasColumnName("Gizli");
+        builder.Property(r => r.IsDeleted).HasColumnName("Silindi").HasDefaultValue(false);
         builder.Property(r => r.UpdatedAt).HasColumnName("GuncellemeTarihi");
 
         // A review needs a returned rental, and rentals keep films and accounts, so neither is deleted

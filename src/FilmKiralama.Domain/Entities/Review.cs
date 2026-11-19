@@ -22,6 +22,14 @@ public sealed class Review
     /// <summary>Hidden by an admin: not shown to customers and not counted in the average.</summary>
     public bool IsHidden { get; set; }
 
+    /// <summary>
+    /// Deleted by its author while hidden. A hidden review is never removed, so that deleting it and
+    /// writing it again cannot make it public: its comment is cleared, it is left out of every list, and
+    /// the author's next review of the film takes this row back, still hidden. Only a hidden review is
+    /// ever marked deleted.
+    /// </summary>
+    public bool IsDeleted { get; set; }
+
     /// <summary>UTC time of the last change, by the database's clock.</summary>
     public DateTime UpdatedAt { get; set; }
 }

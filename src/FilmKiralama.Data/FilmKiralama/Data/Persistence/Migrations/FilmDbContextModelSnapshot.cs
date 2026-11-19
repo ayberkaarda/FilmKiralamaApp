@@ -179,6 +179,12 @@ namespace FilmKiralama.Data.Persistence.Migrations
                         .HasColumnType("int")
                         .HasColumnName("FilmID");
 
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("Silindi");
+
                     b.Property<bool>("IsHidden")
                         .HasColumnType("bit")
                         .HasColumnName("Gizli");

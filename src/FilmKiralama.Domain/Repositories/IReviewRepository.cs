@@ -20,7 +20,8 @@ public interface IReviewRepository
 
     /// <summary>
     /// Deletes review <paramref name="reviewId"/> when it belongs to <paramref name="userId"/>; another
-    /// account's review is treated as missing.
+    /// account's review is treated as missing. A review an admin hid is not removed but marked deleted
+    /// (see <see cref="Review.IsDeleted"/>), so writing it again leaves it hidden.
     /// </summary>
     /// <exception cref="ActorRevokedException">The account no longer exists.</exception>
     Task<bool> DeleteOwnAsync(int userId, int reviewId, CancellationToken cancellationToken = default);

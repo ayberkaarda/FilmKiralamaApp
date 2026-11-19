@@ -104,6 +104,44 @@ public sealed class SqliteReviewTests : IAsyncLifetime
         Assert.Equal(0, await CountAsync());
     }
 
+    /// <summary>
+    /// Deleting a review an admin hid and writing it again does not make it public: the hidden mark
+    /// outlives the deletion, the deleted text is gone and an admin cannot show the deleted review.
+    /// </summary>
+    [Fact]
+    public async Task HiddenReview_DeletedAndWrittenAgain_StaysHidden()
+    {
+        var author = await WatchedAsync("kaba", 1, ThreeCopiesFilmId);
+        var admin = Admin(SeedAdminId);
+        await Reviews.SaveAsync(author, ThreeCopiesFilmId, new ReviewInput(1, "Kaba bir yorum"), Ct);
+        var id = (await Reviews.GetOwnAsync(author, ThreeCopiesFilmId, Ct))!.Id;
+        await Reviews.SetHiddenAsync(admin, id, true, Ct);
+
+        await Reviews.DeleteOwnAsync(author, id, Ct);
+
+        Assert.Null(await Reviews.GetOwnAsync(author, ThreeCopiesFilmId, Ct));
+        Assert.Null((await Reviews.GetReviewableAsync(author, Ct)).Single().ReviewId);
+        Assert.Empty((await Reviews.GetAllAsync(admin, hiddenOnly: false, 1, Ct)).Items);
+        var show = await Assert.ThrowsAsync<BusinessRuleException>(() => Reviews.SetHiddenAsync(admin, id, false, Ct));
+        Assert.Equal(ReviewService.ReviewNotFound, show.Message);
+        var again = await Assert.ThrowsAsync<BusinessRuleException>(() => Reviews.DeleteOwnAsync(author, id, Ct));
+        Assert.Equal(ReviewService.ReviewNotFound, again.Message);
+        await using (var db = _db.CreateContext())
+        {
+            Assert.Null((await db.Reviews.SingleAsync(Ct)).Comment);
+        }
+
+        await Reviews.SaveAsync(author, ThreeCopiesFilmId, new ReviewInput(1, "Kaba bir yorum"), Ct);
+
+        var own = await Reviews.GetOwnAsync(author, ThreeCopiesFilmId, Ct);
+        Assert.Equal((1, "Kaba bir yorum", true), (own!.Rating, own.Comment, own.IsHidden));
+        var film = await Reviews.GetFilmReviewsAsync(author, ThreeCopiesFilmId, Ct);
+        Assert.Equal((0, null), (film.Count, film.Average));
+        Assert.Empty(film.Reviews);
+        Assert.Equal([id], (await Reviews.GetAllAsync(admin, hiddenOnly: true, 1, Ct)).Items.Select(r => r.Id));
+        Assert.Equal(1, await CountAsync());
+    }
+
     /// <summary>The database refuses ratings outside one to five and comments longer than its column on its own.</summary>
     [Theory]
     [InlineData(0)]
