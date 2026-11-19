@@ -65,6 +65,11 @@ internal sealed class AuthService(
 
         var name = input.UserName;
         password = input.Password!;
+
+        // The database's clock: a computer whose clock is ahead cannot end a lock early, nor one whose
+        // clock is behind make a lock last longer. It is read before the lookup, for every name, so the
+        // round trip does not make a known name slower to refuse than an unknown one.
+        var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
         var account = await users.FindByUserNameAsync(name, cancellationToken).ConfigureAwait(false);
         if (account is null)
         {
@@ -72,9 +77,6 @@ internal sealed class AuthService(
             throw Refused();
         }
 
-        // The database's clock: a computer whose clock is ahead cannot end a lock early, nor one whose
-        // clock is behind make a lock last longer.
-        var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
         if (account.LockoutEnd > now)
         {
             // Same answer and about the same cost as a wrong password; nothing is written, so the lock

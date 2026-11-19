@@ -264,6 +264,30 @@ public sealed class AuthServiceTests
         _users.Verify(u => u.RecordSuccessfulLoginAsync(locked, Now.AddMinutes(15), null, It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// An unknown and a known user name both read the database's clock once, before the account is
+    /// looked up, so the round trip to the clock does not make the known name slower to refuse.
+    /// </summary>
+    [Fact]
+    public async Task SignIn_KnownAndUnknownNames_ReadTheClockOnceBeforeTheLookup()
+    {
+        var steps = new List<string>();
+        var clock = new Mock<IClock>(MockBehavior.Strict);
+        clock.Setup(c => c.GetUtcNowAsync(It.IsAny<CancellationToken>())).Callback(() => steps.Add("clock")).ReturnsAsync(Now);
+        _users.Setup(u => u.FindByUserNameAsync("kimse", It.IsAny<CancellationToken>())).Callback(() => steps.Add("lookup")).ReturnsAsync((AccountCredentials?)null);
+        _users.Setup(u => u.FindByUserNameAsync(UserName, It.IsAny<CancellationToken>())).Callback(() => steps.Add("lookup")).ReturnsAsync(Account(_hasher.Hash(Password)));
+        _users.Setup(u => u.RecordFailedLoginAsync(7, LoginPolicy.MaxFailedAttempts, Now.AddMinutes(15), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        var service = new AuthService(_users.Object, _hasher, clock.Object, _audit, TestValidators.SignIn, TestValidators.SignUp, TestValidators.PasswordChange);
+
+        await Assert.ThrowsAsync<BusinessRuleException>(() => service.SignInAsync("kimse", Password, Ct));
+        var unknown = steps.ToList();
+        steps.Clear();
+        await Assert.ThrowsAsync<BusinessRuleException>(() => service.SignInAsync(UserName, "Yanlis.Sifre1", Ct));
+
+        Assert.Equal(["clock", "lookup"], unknown);
+        Assert.Equal(unknown, steps);
+    }
+
     private AuthService Service() =>
         new(_users.Object, _hasher, new TimeProviderClock(_time), _audit, TestValidators.SignIn, TestValidators.SignUp, TestValidators.PasswordChange);
 
