@@ -47,6 +47,15 @@ internal static class LegacySchemaUpgrader
 
     private const string SqlPlus = " + ";
 
+    /// <summary>How long a start waits for another start's upgrade to finish before it gives up as busy.</summary>
+    private const int LockTimeoutMilliseconds = 60_000;
+
+    /// <summary>
+    /// Command timeout of the upgrade's statements: altering the columns and building the indexes of a
+    /// large original database can take much longer than an ordinary command.
+    /// </summary>
+    internal static readonly TimeSpan CommandTimeout = TimeSpan.FromMinutes(10);
+
     /// <summary>Counts which of <see cref="LegacyColumns"/> exist; built once from the constant list above.</summary>
     private static readonly string CountLegacyColumns =
         $"SELECT {string.Join(SqlPlus, LegacyColumns.Select(c => $"CASE WHEN COL_LENGTH(N'dbo.{c.Table}', N'{c.Column}') IS NULL THEN 0 ELSE 1 END"))} AS [Value]";
@@ -84,7 +93,7 @@ internal static class LegacySchemaUpgrader
             {
                 await using var transaction = await context.Database.BeginTransactionAsync(token).ConfigureAwait(false);
 
-                await AppLock.AcquireAsync(context, "FilmKiralama.LegacySchemaUpgrade", 60_000, token).ConfigureAwait(false);
+                await AppLock.AcquireAsync(context, "FilmKiralama.LegacySchemaUpgrade", LockTimeoutMilliseconds, token).ConfigureAwait(false);
 
                 // Another process may have finished the upgrade while this one waited for the lock.
                 if (!await IsLegacyAsync(context, token).ConfigureAwait(false))

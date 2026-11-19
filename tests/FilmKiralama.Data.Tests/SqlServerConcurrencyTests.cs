@@ -169,6 +169,29 @@ public sealed class SqlServerConcurrencyTests
     }
 
     /// <summary>
+    /// A film lock held by another instance makes a rental wait for the whole lock timeout and then
+    /// end as "busy" (the lock was refused), never as a command timeout, even when the configured
+    /// command timeout is shorter than the lock wait. Once the lock is free the rental works.
+    /// </summary>
+    [Fact]
+    public async Task HeldFilmLock_IsReportedAsBusyNotAsACommandTimeout()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServicesWithCommandTimeout(5, demo: true);
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        await using (await database.HoldAppLockAsync("FilmKiralama.Film." + ThreeCopiesFilmId, Ct))
+        {
+            await Assert.ThrowsAsync<AppLockNotGrantedException>(() => RentAsync(a, User(SeedUserId), ThreeCopiesFilmId));
+        }
+
+        Assert.True(waited.Elapsed >= TimeSpan.FromSeconds(25), "The rental did not wait for the film lock.");
+        await RentAsync(a, User(SeedUserId), ThreeCopiesFilmId);
+        await AssertStockAsync(database, ThreeCopiesFilmId, active: 1, available: 2);
+    }
+
+    /// <summary>
     /// The stored account decides on SQL Server too (the locking read of the actor's row): a demoted
     /// admin's open session is refused everywhere, and a deleted customer's session cannot rent.
     /// </summary>

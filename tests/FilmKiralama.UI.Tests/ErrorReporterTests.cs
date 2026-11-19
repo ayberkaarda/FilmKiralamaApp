@@ -37,6 +37,8 @@ public sealed class ErrorReporterTests
     {
         Assert.Equal(ErrorReporter.DatabaseInitializationMessage, ErrorReporter.Describe(new DatabaseInitializationException(new InvalidOperationException("x"))));
         Assert.Equal(ErrorReporter.BusyMessage, ErrorReporter.Describe(new AggregateException(new AppLockNotGrantedException("x"))));
+        Assert.Equal(ErrorReporter.UpgradeBusyMessage, ErrorReporter.Describe(new DatabaseInitializationException(new AppLockNotGrantedException("x"))));
+        Assert.Contains("meşgul", ErrorReporter.BusyMessage, StringComparison.Ordinal);
         Assert.Equal(ErrorReporter.TimeoutMessage, ErrorReporter.Describe(new TimeoutException("x")));
         Assert.Equal(ErrorReporter.UnexpectedErrorMessage, ErrorReporter.Describe(new InvalidOperationException("Server=gizli")));
     }

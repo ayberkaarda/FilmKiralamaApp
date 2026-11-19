@@ -21,7 +21,10 @@ internal static class ErrorReporter
     internal const string DatabaseMessage =
         "Veritabanı işlemi tamamlanamadı. SQL Server'ın çalıştığından ve bağlantı ayarlarının doğru olduğundan emin olun.";
 
-    internal const string BusyMessage = "Aynı film üzerinde başka bir işlem sürüyor. Lütfen biraz sonra tekrar deneyin.";
+    internal const string BusyMessage = "İşlem meşgul: aynı kayıt üzerinde başka bir işlem sürüyor. Lütfen biraz sonra tekrar deneyin.";
+
+    internal const string UpgradeBusyMessage =
+        "Veritabanı şu anda başka bir açılışta güncelleniyor. Lütfen güncelleme bittikten sonra uygulamayı yeniden açın.";
 
     internal const string TimeoutMessage = "İşlem zaman aşımına uğradı. Lütfen tekrar deneyin.";
 
@@ -93,7 +96,8 @@ internal static class ErrorReporter
 
         if (Find<DatabaseInitializationException>(exception) is not null)
         {
-            return DatabaseInitializationMessage;
+            // Another start held the upgrade lock for longer than this one waits.
+            return Find<AppLockNotGrantedException>(exception) is not null ? UpgradeBusyMessage : DatabaseInitializationMessage;
         }
 
         if (Find<AppLockNotGrantedException>(exception) is not null)

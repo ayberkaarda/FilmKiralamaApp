@@ -187,6 +187,49 @@ public sealed class LegacyUpgradeTests
         Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kiralama", Ct));
     }
 
+    /// <summary>
+    /// While another start holds the upgrade lock, a second start waits for it instead of failing,
+    /// even with a command timeout shorter than the wait, and then finds the work to do.
+    /// </summary>
+    [Fact]
+    public async Task Initialize_WhileAnotherStartHoldsTheUpgradeLock_WaitsInsteadOfFailing()
+    {
+        await using var database = await SqlServerTestDatabase.CreateAsync(Ct);
+        await database.ExecuteAsync(LegacySchema, Ct);
+        await database.ExecuteAsync(LegacyData, Ct);
+        await using var provider = database.BuildServicesWithCommandTimeout(5);
+
+        Task initialization;
+        await using (await database.HoldAppLockAsync("FilmKiralama.LegacySchemaUpgrade", Ct))
+        {
+            initialization = Task.Run(() => provider.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct), Ct);
+            await Task.Delay(TimeSpan.FromSeconds(9), Ct);
+            Assert.False(initialization.IsCompleted, "The second start did not wait for the upgrade lock.");
+        }
+
+        await initialization;
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.__EFMigrationsHistory", Ct));
+        Assert.Equal(0, await database.ScalarAsync("SELECT MevcutAdet FROM dbo.Filmler WHERE FilmID = 4", Ct));
+    }
+
+    /// <summary>A start that gives up waiting for the upgrade lock reports the refused lock, so it can say "busy".</summary>
+    [Fact]
+    public async Task Initialize_UpgradeLockHeldLongerThanTheWait_ReportsTheRefusedLock()
+    {
+        await using var database = await SqlServerTestDatabase.CreateAsync(Ct);
+        await database.ExecuteAsync(LegacySchema, Ct);
+        await database.ExecuteAsync(LegacyData, Ct);
+        await using var provider = database.BuildServicesWithCommandTimeout(5);
+
+        await using (await database.HoldAppLockAsync("FilmKiralama.LegacySchemaUpgrade", Ct))
+        {
+            var error = await Assert.ThrowsAsync<DatabaseInitializationException>(() => provider.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct));
+            Assert.IsType<AppLockNotGrantedException>(error.InnerException);
+        }
+
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM sys.tables WHERE name = N'__EFMigrationsHistory'", Ct));
+    }
+
     [Fact]
     public async Task Initialize_NewDatabase_HasNoAccountAndNoFilm()
     {

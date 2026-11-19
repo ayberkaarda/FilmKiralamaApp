@@ -49,6 +49,10 @@ internal sealed class DatabaseInitializer(
         {
             if (db.Database.IsSqlServer())
             {
+                // Schema changes of a large database may run long; ordinary operations keep the
+                // configured timeout, as they use contexts of their own.
+                db.Database.SetCommandTimeout(LegacySchemaUpgrader.CommandTimeout);
+
                 // A database from the original application has the tables but no migration history.
                 await LegacySchemaUpgrader.UpgradeIfLegacyAsync(db, cancellationToken).ConfigureAwait(false);
                 await db.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
