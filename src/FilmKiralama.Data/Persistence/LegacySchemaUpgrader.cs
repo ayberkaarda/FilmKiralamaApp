@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using FilmKiralama.Data.Persistence.Migrations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -44,6 +44,12 @@ internal static class LegacySchemaUpgrader
         ("Kiralama", "KiralamaID"), ("Kiralama", "FilmID"), ("Kiralama", "KullaniciID"), ("Kiralama", "AlisTarihi"),
         ("Kiralama", "IadeTarihi"), ("Kiralama", "Ucret"),
     ];
+
+    private const string SqlPlus = " + ";
+
+    /// <summary>Counts which of <see cref="LegacyColumns"/> exist; built once from the constant list above.</summary>
+    private static readonly string CountLegacyColumns =
+        $"SELECT {string.Join(SqlPlus, LegacyColumns.Select(c => $"CASE WHEN COL_LENGTH(N'dbo.{c.Table}', N'{c.Column}') IS NULL THEN 0 ELSE 1 END"))} AS [Value]";
 
     /// <summary>Identifier of the first migration; a database without it in its history may be legacy.</summary>
     internal static string BaselineMigrationId { get; } = MigrationId<InitialCreate>();
@@ -124,10 +130,7 @@ internal static class LegacySchemaUpgrader
     private static async Task EnsureLegacyShapeAsync(FilmDbContext db, CancellationToken cancellationToken)
     {
         var tables = await CountExistingLegacyTablesAsync(db, cancellationToken).ConfigureAwait(false);
-        var columns = await ScalarAsync(
-            db,
-            "SELECT " + string.Join(" + ", LegacyColumns.Select(c => $"CASE WHEN COL_LENGTH(N'dbo.{c.Table}', N'{c.Column}') IS NULL THEN 0 ELSE 1 END")) + " AS [Value]",
-            cancellationToken).ConfigureAwait(false);
+        var columns = await ScalarAsync(db, CountLegacyColumns, cancellationToken).ConfigureAwait(false);
         if (tables != LegacyTables.Length || columns != LegacyColumns.Length)
         {
             throw new InvalidOperationException(
@@ -354,8 +357,8 @@ internal static class LegacySchemaUpgrader
         AddCheck("Kiralama", "CK_Kiralama_Ucret", SchemaLimits.RentalPriceCheck),
 
         CreateIndex("Kullanicilar", "IX_Kullanicilar_KullaniciAdi", "CREATE UNIQUE INDEX IX_Kullanicilar_KullaniciAdi ON dbo.Kullanicilar (KullaniciAdi)"),
-        CreateIndex("Kullanicilar", "IX_Kullanicilar_Eposta", "CREATE UNIQUE INDEX IX_Kullanicilar_Eposta ON dbo.Kullanicilar (Eposta) WHERE " + SchemaLimits.EmailFilter),
-        CreateIndex("Kullanicilar", "IX_Kullanicilar_Telefon", "CREATE UNIQUE INDEX IX_Kullanicilar_Telefon ON dbo.Kullanicilar (Telefon) WHERE " + SchemaLimits.PhoneFilter),
+        CreateIndex("Kullanicilar", "IX_Kullanicilar_Eposta", $"CREATE UNIQUE INDEX IX_Kullanicilar_Eposta ON dbo.Kullanicilar (Eposta) WHERE {SchemaLimits.EmailFilter}"),
+        CreateIndex("Kullanicilar", "IX_Kullanicilar_Telefon", $"CREATE UNIQUE INDEX IX_Kullanicilar_Telefon ON dbo.Kullanicilar (Telefon) WHERE {SchemaLimits.PhoneFilter}"),
         CreateIndex("Filmler", "IX_Filmler_Tur", "CREATE INDEX IX_Filmler_Tur ON dbo.Filmler (Tur)"),
         CreateIndex("Filmler", "IX_Filmler_Yonetmen", "CREATE INDEX IX_Filmler_Yonetmen ON dbo.Filmler (Yonetmen)"),
         CreateIndex("Filmler", "IX_Filmler_Yil", "CREATE INDEX IX_Filmler_Yil ON dbo.Filmler (Yil)"),
@@ -364,7 +367,7 @@ internal static class LegacySchemaUpgrader
         CreateIndex(
             "Kiralama",
             "IX_Kiralama_KullaniciID_FilmID",
-            "CREATE UNIQUE INDEX IX_Kiralama_KullaniciID_FilmID ON dbo.Kiralama (KullaniciID, FilmID) WHERE " + SchemaLimits.ActiveRentalFilter),
+            $"CREATE UNIQUE INDEX IX_Kiralama_KullaniciID_FilmID ON dbo.Kiralama (KullaniciID, FilmID) WHERE {SchemaLimits.ActiveRentalFilter}"),
     ];
 
     private static string AlterColumn(string table, string column, string typeName, int maxLength, string definition, bool nullable = false) =>
