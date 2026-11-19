@@ -26,8 +26,12 @@ public interface IReviewRepository
     /// <exception cref="ActorRevokedException">The account no longer exists.</exception>
     Task<bool> DeleteOwnAsync(int userId, int reviewId, CancellationToken cancellationToken = default);
 
-    /// <summary>The visible reviews of a film, newest first, at most <paramref name="max"/>, and the totals of all visible ones.</summary>
-    Task<(IReadOnlyList<ReviewDetails> Reviews, RatingTotals Totals)> GetVisibleAsync(int filmId, int max, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// The visible reviews of a film, newest first, at most <paramref name="max"/>, and the totals of all
+    /// visible ones, for account <paramref name="actorId"/>, which is checked first.
+    /// </summary>
+    /// <exception cref="ActorRevokedException">The account no longer exists.</exception>
+    Task<(IReadOnlyList<ReviewDetails> Reviews, RatingTotals Totals)> GetVisibleAsync(int actorId, int filmId, int max, CancellationToken cancellationToken = default);
 
     /// <summary>The films the account has returned at least once, by title, with its own review.</summary>
     /// <exception cref="ActorRevokedException">The account no longer exists.</exception>

@@ -29,7 +29,8 @@ public interface IReportRepository
 
     /// <summary>
     /// Listed films of <paramref name="genres"/> with a copy on the shelf that the account has never rented,
-    /// with the totals of their visible ratings.
+    /// with the totals of their visible ratings. The account is checked first.
     /// </summary>
+    /// <exception cref="ActorRevokedException">The account no longer exists.</exception>
     Task<IReadOnlyList<CatalogEntry>> GetUnrentedAvailableAsync(int userId, IReadOnlyCollection<string> genres, CancellationToken cancellationToken = default);
 }

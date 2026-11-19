@@ -36,7 +36,7 @@ internal sealed class RecommendationService(IReportRepository reports, IAuditLog
 
         var most = genres.Max(g => g.Rentals);
         var favourites = genres.Where(g => g.Rentals == most).Select(g => g.Genre).ToList();
-        var candidates = await reports.GetUnrentedAvailableAsync(session.UserId, favourites, cancellationToken).ConfigureAwait(false);
+        var candidates = await audit.AsActorAsync(session, () => reports.GetUnrentedAvailableAsync(session.UserId, favourites, cancellationToken)).ConfigureAwait(false);
         return
         [
             .. candidates

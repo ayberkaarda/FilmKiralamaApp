@@ -1,4 +1,5 @@
 using FilmKiralama.Business;
+using FilmKiralama.Business.Reviews;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Data.Persistence;
 using FilmKiralama.Domain.Entities;
@@ -306,6 +307,20 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.Equal(AccessDeniedException.SessionRevokedMessage, rent.Message);
         Assert.Equal(AccessDeniedException.SessionRevokedMessage, list.Message);
         Assert.Equal(3, await AvailableAsync(ThreeCopiesFilmId));
+    }
+
+    /// <summary>A deleted account's open session can no longer search the catalog or read reviews.</summary>
+    [Fact]
+    public async Task DeletedUserSession_CannotSearchOrReadReviews()
+    {
+        var gone = await RegisterAsync(_db.Services, "okuyan", 1);
+        await _db.Get<IAccountService>().DeleteAsync(Admin(SeedAdminId), gone.UserId, Ct);
+
+        var search = await Assert.ThrowsAsync<AccessDeniedException>(() => _db.Get<IFilmService>().SearchCatalogAsync(gone, new CatalogQuery(), Ct));
+        var reviews = await Assert.ThrowsAsync<AccessDeniedException>(() => _db.Get<IReviewService>().GetFilmReviewsAsync(gone, ThreeCopiesFilmId, Ct));
+
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, search.Message);
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, reviews.Message);
     }
 
     /// <summary>A deleted admin's open session can no longer manage anything.</summary>

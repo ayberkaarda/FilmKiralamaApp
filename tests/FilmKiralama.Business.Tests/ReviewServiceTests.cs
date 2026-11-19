@@ -138,7 +138,7 @@ public sealed class ReviewServiceTests
     public async Task FilmReviews_AverageIsRoundedAndAuthorsAreMasked()
     {
         _films.Setup(f => f.FindAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(new Film { Id = 3, IsListed = true });
-        _reviews.Setup(r => r.GetVisibleAsync(3, ReviewPolicy.ShownWithFilm, It.IsAny<CancellationToken>()))
+        _reviews.Setup(r => r.GetVisibleAsync(Sessions.User.UserId, 3, ReviewPolicy.ShownWithFilm, It.IsAny<CancellationToken>()))
             .ReturnsAsync(([new ReviewDetails(1, 3, "Film", 9, "ılgaz.deniz", 4, "Güzel", false, Now.AddDays(-1))], new RatingTotals(3, 11)));
 
         var result = await Service().GetFilmReviewsAsync(Sessions.User, 3, Ct);

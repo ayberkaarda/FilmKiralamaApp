@@ -129,7 +129,9 @@ internal sealed class ReviewService(
             throw new BusinessRuleException(FilmNotFound);
         }
 
-        var (visible, totals) = await reviews.GetVisibleAsync(filmId, ReviewPolicy.ShownWithFilm, cancellationToken).ConfigureAwait(false);
+        var (visible, totals) = await audit.AsActorAsync(
+            session,
+            () => reviews.GetVisibleAsync(session.UserId, filmId, ReviewPolicy.ShownWithFilm, cancellationToken)).ConfigureAwait(false);
         var zone = timeProvider.LocalTimeZone;
         return new FilmReviews(
             RatingMath.Average(totals),

@@ -54,7 +54,7 @@ public sealed class CatalogSearchTests
     [MemberData(nameof(AtTheLimits))]
     public async Task Search_AtItsLimits_ReachesTheCustomersCatalogOnly(CatalogQuery query)
     {
-        _films.Setup(f => f.SearchAsync(query, null, It.IsAny<CancellationToken>()))
+        _films.Setup(f => f.SearchAsync(query, Sessions.User.UserId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PagedResult<CatalogEntry>([], 0, 1, query.PageSize));
 
         var page = await Service().SearchCatalogAsync(Sessions.User, query, Ct);
@@ -68,9 +68,9 @@ public sealed class CatalogSearchTests
     public async Task Search_TrimsTheTitleAndAveragesTheRatings()
     {
         var film = new Film { Id = 3, Title = "Sisli Liman", IsListed = true, AvailableCopies = 0 };
-        _films.Setup(f => f.SearchAsync(new CatalogQuery(Title: "Sisli", Genre: null), null, It.IsAny<CancellationToken>()))
+        _films.Setup(f => f.SearchAsync(new CatalogQuery(Title: "Sisli", Genre: null), Sessions.User.UserId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PagedResult<CatalogEntry>([new CatalogEntry(film, new RatingTotals(3, 11))], 13, 2, 12));
-        _films.Setup(f => f.SearchAsync(new CatalogQuery(), null, It.IsAny<CancellationToken>()))
+        _films.Setup(f => f.SearchAsync(new CatalogQuery(), Sessions.User.UserId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PagedResult<CatalogEntry>([], 0, 1, 12));
 
         var page = await Service().SearchCatalogAsync(Sessions.User, new CatalogQuery(Title: "  Sisli  ", Genre: " "), Ct);
@@ -87,7 +87,7 @@ public sealed class CatalogSearchTests
         await Assert.ThrowsAsync<AccessDeniedException>(() => Service().SearchAllAsync(Sessions.User, new CatalogQuery(), Ct));
         _films.VerifyNoOtherCalls();
 
-        _films.Setup(f => f.SearchAsync(new CatalogQuery(), Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
+        _films.Setup(f => f.SearchAsync(new CatalogQuery(), Sessions.Admin.UserId, true, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
         var revoked = await Assert.ThrowsAsync<AccessDeniedException>(() => Service().SearchAllAsync(Sessions.Admin, new CatalogQuery(), Ct));
 
         Assert.Equal(AccessDeniedException.SessionRevokedMessage, revoked.Message);

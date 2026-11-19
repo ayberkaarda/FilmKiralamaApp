@@ -90,6 +90,7 @@ internal sealed class ReportRepository(IDbContextFactory<FilmDbContext> contextF
 
         var wanted = genres.ToList();
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, userId, admin: false, cancellationToken).ConfigureAwait(false);
         var rows = await db.Films
             .AsNoTracking()
             .Where(f => f.IsListed && f.AvailableCopies > 0 && wanted.Contains(f.Genre))

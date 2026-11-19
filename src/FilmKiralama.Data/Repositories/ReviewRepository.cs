@@ -98,11 +98,12 @@ internal sealed class ReviewRepository(IDbContextFactory<FilmDbContext> contextF
         return marked == 1;
     }
 
-    public async Task<(IReadOnlyList<ReviewDetails> Reviews, RatingTotals Totals)> GetVisibleAsync(int filmId, int max, CancellationToken cancellationToken = default)
+    public async Task<(IReadOnlyList<ReviewDetails> Reviews, RatingTotals Totals)> GetVisibleAsync(int actorId, int filmId, int max, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(max, 0);
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actorId, admin: false, cancellationToken).ConfigureAwait(false);
         var visible = db.Reviews.AsNoTracking().Where(r => r.FilmId == filmId && !r.IsHidden);
         var count = await visible.CountAsync(cancellationToken).ConfigureAwait(false);
         var sum = count == 0 ? 0 : await visible.SumAsync(r => r.Rating, cancellationToken).ConfigureAwait(false);

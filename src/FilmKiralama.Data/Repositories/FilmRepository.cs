@@ -19,18 +19,15 @@ internal sealed class FilmRepository(IDbContextFactory<FilmDbContext> contextFac
             .ConfigureAwait(false);
     }
 
-    public async Task<PagedResult<CatalogEntry>> SearchAsync(CatalogQuery query, int? adminId, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<CatalogEntry>> SearchAsync(CatalogQuery query, int actorId, bool asAdmin, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentOutOfRangeException.ThrowIfLessThan(query.PageSize, 1);
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        if (adminId is { } admin)
-        {
-            await Actors.RequireAsync(db, admin, admin: true, cancellationToken).ConfigureAwait(false);
-        }
+        await Actors.RequireAsync(db, actorId, asAdmin, cancellationToken).ConfigureAwait(false);
 
-        var films = Searched(db, query, listedOnly: adminId is null);
+        var films = Searched(db, query, listedOnly: !asAdmin);
         var total = await films.CountAsync(cancellationToken).ConfigureAwait(false);
         var page = Paging.ClampPage(query.Page, total, query.PageSize);
         var rows = await films

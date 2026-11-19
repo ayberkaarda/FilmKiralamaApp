@@ -86,7 +86,7 @@ internal sealed class FilmService(
     {
         Access.RequireSignedIn(session);
         var checkedQuery = Checked(query);
-        var page = await films.SearchAsync(checkedQuery, adminId: null, cancellationToken).ConfigureAwait(false);
+        var page = await audit.AsActorAsync(session, () => films.SearchAsync(checkedQuery, session.UserId, asAdmin: false, cancellationToken)).ConfigureAwait(false);
         return Items(page);
     }
 
@@ -94,7 +94,7 @@ internal sealed class FilmService(
     {
         Access.RequireAdmin(session, audit);
         var checkedQuery = Checked(query);
-        var page = await audit.AsActorAsync(session, () => films.SearchAsync(checkedQuery, session.UserId, cancellationToken)).ConfigureAwait(false);
+        var page = await audit.AsActorAsync(session, () => films.SearchAsync(checkedQuery, session.UserId, asAdmin: true, cancellationToken)).ConfigureAwait(false);
         return Items(page);
     }
 
