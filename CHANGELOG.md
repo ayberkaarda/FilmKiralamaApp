@@ -90,8 +90,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - A review an admin hid is never removed: when its author deletes it, its comment is cleared and it stays hidden
   out of every list, so writing it again leaves it hidden (column `Silindi`, migration `AddReviewDeletion`).
-- Sign-in reads the database clock before it looks the account up, so known and unknown names take the same
-  round trips.
+- Accounts have a session version (column `OturumSurumu`, migration `AddSessionVersion`). A password set by an
+  admin, an own password change and a role change raise it, and every operation checks the session's account id,
+  version and role inside its own transaction, so the open session of an account whose password was reset (with
+  its role unchanged) can no longer manage anything. The session that changes its own password keeps working.
+- Account and film changes carry the version their form loaded and are refused when another admin changed the
+  record meanwhile; the form loads it again. Films get a version for this (column `Surum`, migration
+  `AddFilmVersion`), raised by every change of their details but not by rentals and returns.
+- A failed sign-in is counted only while the account is unlocked by the database's clock and still has the
+  password and session version that were checked, so a failure already in flight when a concurrent one locks the
+  account, or when an admin sets a new password, counts nothing; a new lock ends by the database's clock.
+- Every sign-in that reaches the database makes the same calls in the same order: an unknown name and a locked
+  account end with the same failure write as a wrong password (it changes no row). The response time is not
+  constant.
+- An unlisted film and its reviews are read only for an account that is an admin in the database at that moment.
+- The newest year a film may have follows the database's clock instead of the computer's.
 - A deleted account's open session can no longer search the catalog, read reviews or get recommendations, and a
   retried concurrent review save checks the account and the eligibility again.
 - User names, e-mail addresses, phone numbers, passwords, setup keys, film titles and exception messages are never
