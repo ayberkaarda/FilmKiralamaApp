@@ -44,19 +44,13 @@ internal static class DisplayFormat
 internal static class AppAssets
 {
     private static readonly Lazy<Image> LazyLogo = new(() => LoadImage("logo-256.png"));
-    private static readonly Lazy<Image> LazyBackground = new(() => LoadImage("background.png"));
-    private static readonly Lazy<Image> LazyHero = new(() => LoadImage("hero.png"));
     private static readonly Lazy<Image> LazyPoster = new(() => LoadImage("poster.png"));
     private static readonly Lazy<Icon> LazyIcon = new(LoadIcon);
 
+    /// <summary>The logo at 256 px, for painting it at any size.</summary>
     public static Image Logo => LazyLogo.Value;
 
-    public static Image Background => LazyBackground.Value;
-
-    /// <summary>The picture beside the sign-in fields.</summary>
-    public static Image Hero => LazyHero.Value;
-
-    /// <summary>Shown for a film without a poster or whose poster cannot be loaded.</summary>
+    /// <summary>Shown for a film without a poster or whose poster cannot be loaded; it has the 2:3 shape of a poster.</summary>
     public static Image Poster => LazyPoster.Value;
 
     public static Icon Icon => LazyIcon.Value;

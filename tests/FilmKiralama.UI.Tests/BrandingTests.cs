@@ -13,10 +13,9 @@ public sealed class BrandingTests
         var resources = typeof(AppAssets).Assembly.GetManifestResourceNames().Order(StringComparer.Ordinal).ToList();
 
         Assert.Equal(
-            ["FilmKiralama.UI.Assets.app.ico", "FilmKiralama.UI.Assets.background.png", "FilmKiralama.UI.Assets.hero.png", "FilmKiralama.UI.Assets.logo-256.png", "FilmKiralama.UI.Assets.poster.png"],
+            ["FilmKiralama.UI.Assets.app.ico", "FilmKiralama.UI.Assets.logo-256.png", "FilmKiralama.UI.Assets.poster.png"],
             resources.Where(r => r.Contains(".Assets.", StringComparison.Ordinal)));
-        Assert.DoesNotContain(resources, r => r.EndsWith(".resources", StringComparison.Ordinal) && !r.Contains("ReaLTaiizor", StringComparison.Ordinal));
-        Assert.Equal(new Size(545, 737), AppAssets.Hero.Size);
+        Assert.DoesNotContain(resources, r => r.EndsWith(".resources", StringComparison.Ordinal));
 
         // The placeholder has the 2:3 shape of a poster, at the largest size a downloaded poster is kept at.
         Assert.Equal(new Size(PosterLoader.MaxShownWidth, PosterLoader.MaxShownHeight), AppAssets.Poster.Size);

@@ -21,8 +21,6 @@
   <ItemGroup>
     <!-- Original artwork: the logo, the icon and the poster placeholder are rasterized from assets/*.svg by tools/Screenshots (icons command). -->
     <EmbeddedResource Include="..\..\assets\logo-256.png" Link="Assets\logo-256.png" LogicalName="FilmKiralama.UI.Assets.logo-256.png" />
-    <EmbeddedResource Include="..\..\assets\background.png" Link="Assets\background.png" LogicalName="FilmKiralama.UI.Assets.background.png" />
-    <EmbeddedResource Include="..\..\assets\hero.png" Link="Assets\hero.png" LogicalName="FilmKiralama.UI.Assets.hero.png" />
     <EmbeddedResource Include="..\..\assets\poster.png" Link="Assets\poster.png" LogicalName="FilmKiralama.UI.Assets.poster.png" />
     <EmbeddedResource Include="..\..\assets\app.ico" Link="Assets\app.ico" LogicalName="FilmKiralama.UI.Assets.app.ico" />
   </ItemGroup>
@@ -42,7 +40,6 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.15" />
     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.15" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.15" />
-    <PackageReference Include="ReaLTaiizor" Version="3.8.1.2" />
     <PackageReference Include="Serilog" Version="4.3.1" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
   </ItemGroup>

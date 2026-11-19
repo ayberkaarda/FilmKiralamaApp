@@ -134,33 +134,6 @@ internal static class UiExtensions
     public static void ShowPoster(this PictureBox pictureBox, string? imageUrl) =>
         PosterLoader.Default.Show(pictureBox, imageUrl);
 
-    /// <summary>
-    /// Read-only list settings of the original grids. Under high contrast the system colors stay, so a
-    /// selected row never gets a fixed light text color on the highlight.
-    /// </summary>
-    public static void UseReadOnlyList(this DataGridView grid)
-    {
-        ArgumentNullException.ThrowIfNull(grid);
-
-        grid.ReadOnly = true;
-        grid.AllowUserToAddRows = false;
-        grid.AllowUserToDeleteRows = false;
-        grid.MultiSelect = false;
-        grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-        if (SystemInformation.HighContrast)
-        {
-            grid.DefaultCellStyle.ForeColor = SystemColors.WindowText;
-            grid.DefaultCellStyle.BackColor = SystemColors.Window;
-        }
-        else
-        {
-            grid.DefaultCellStyle.ForeColor = Color.Black;
-        }
-
-        grid.DefaultCellStyle.SelectionForeColor = SystemColors.HighlightText;
-        grid.DefaultCellStyle.SelectionBackColor = SystemColors.Highlight;
-    }
-
     /// <summary>Replaces the items of a list without selecting one, keeping the update to a single repaint.</summary>
     public static void ReplaceItems<T>(this ListBox listBox, IEnumerable<T> items)
     {
