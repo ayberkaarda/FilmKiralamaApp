@@ -222,11 +222,31 @@ public sealed class AuthServiceTests
         _users.Setup(u => u.FindByIdAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(account);
         _users.Setup(u => u.ChangePasswordAsync(account, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Callback<AccountCredentials, string, CancellationToken>((_, hash, _) => stored = hash)
-            .ReturnsAsync(true);
+            .ReturnsAsync(1);
+        var session = new UserSession(7, UserName, UserRole.User, sessionVersion: 0);
 
-        await Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User, sessionVersion: 0), Password, "Yeni.Sifre12", "Yeni.Sifre12", Ct);
+        await Service().ChangePasswordAsync(session, Password, "Yeni.Sifre12", "Yeni.Sifre12", Ct);
 
         Assert.Equal(PasswordVerificationResult.Success, _hasher.Verify("Yeni.Sifre12", stored!, PasswordFormat.Pbkdf2));
+        Assert.Equal(1, session.SessionVersion);
+    }
+
+    /// <summary>
+    /// A session whose account got a new password or role elsewhere cannot change the password either,
+    /// not even with the right current one; it is told to sign in again and nothing is counted or written.
+    /// </summary>
+    [Fact]
+    public async Task ChangePassword_RevokedSession_IsRefusedWithoutCheckingThePassword()
+    {
+        _users.Setup(u => u.FindByIdAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(Account(_hasher.Hash(Password)) with { SessionVersion = 3 });
+
+        var error = await Assert.ThrowsAsync<AccessDeniedException>(
+            () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User, sessionVersion: 2), Password, "Yeni.Sifre12", "Yeni.Sifre12", Ct));
+
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, error.Message);
+        _users.Verify(u => u.FindByIdAsync(7, It.IsAny<CancellationToken>()), Times.Once);
+        _users.VerifyNoOtherCalls();
+        Assert.Equal(["access.session_revoked user"], _audit.Entries);
     }
 
     [Theory]

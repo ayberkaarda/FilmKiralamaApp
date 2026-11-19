@@ -143,8 +143,8 @@ public sealed class SqlServerConcurrencyTests
         for (var round = 0; round < Rounds; round++)
         {
             var accounts = a.GetRequiredService<IAccountService>();
-            var x = await accounts.AddAsync(Admin(SeedAdminId), Input("xadmin" + round, 200 + round, UserRole.Admin), Ct);
-            var y = await accounts.AddAsync(Admin(SeedAdminId), Input("yadmin" + round, 300 + round, UserRole.Admin), Ct);
+            var x = await accounts.AddAsync(await CurrentSessionAsync(a, SeedAdminId), Input("xadmin" + round, 200 + round, UserRole.Admin), Ct);
+            var y = await accounts.AddAsync(await CurrentSessionAsync(a, SeedAdminId), Input("yadmin" + round, 300 + round, UserRole.Admin), Ct);
 
             // The seed admin steps down first, so x and y are the only admins.
             await accounts.UpdateAsync(Admin(x), SeedAdminId, new AccountInput("yonetici", null, "yonetici@example.com", "5550000001", UserRole.User), Ct);
@@ -163,8 +163,8 @@ public sealed class SqlServerConcurrencyTests
 
             // Hand the role back to the seed admin for the next round.
             var remaining = await database.ScalarAsync("SELECT KullaniciID FROM dbo.Kullanicilar WHERE Rol = N'Admin'", Ct);
-            await accounts.UpdateAsync(Admin(remaining), SeedAdminId, new AccountInput("yonetici", null, "yonetici@example.com", "5550000001", UserRole.Admin), Ct);
-            await accounts.UpdateAsync(Admin(SeedAdminId), remaining, remaining == x ? Input("xadmin" + round, 200 + round, UserRole.User) : Input("yadmin" + round, 300 + round, UserRole.User), Ct);
+            await accounts.UpdateAsync(await CurrentSessionAsync(a, remaining), SeedAdminId, new AccountInput("yonetici", null, "yonetici@example.com", "5550000001", UserRole.Admin), Ct);
+            await accounts.UpdateAsync(await CurrentSessionAsync(a, SeedAdminId), remaining, remaining == x ? Input("xadmin" + round, 200 + round, UserRole.User) : Input("yadmin" + round, 300 + round, UserRole.User), Ct);
         }
     }
 
@@ -193,7 +193,8 @@ public sealed class SqlServerConcurrencyTests
 
     /// <summary>
     /// The stored account decides on SQL Server too (the locking read of the actor's row): a demoted
-    /// admin's open session is refused everywhere, and a deleted customer's session cannot rent.
+    /// admin's open session is refused everywhere, so is the session of an admin whose password another
+    /// admin reset (the role stayed), and a deleted customer's session cannot rent.
     /// </summary>
     [Fact]
     public async Task RevokedSessions_AreRefusedAndChangeNothing()
@@ -206,11 +207,15 @@ public sealed class SqlServerConcurrencyTests
         var second = Input("ikinci", 1, UserRole.Admin);
         var secondId = await accounts.AddAsync(Admin(SeedAdminId), second, Ct);
         var demoted = await b.GetRequiredService<IAuthService>().SignInAsync("ikinci", Password, Ct);
+        var third = Input("ucuncu", 3, UserRole.Admin);
+        var thirdId = await accounts.AddAsync(Admin(SeedAdminId), third, Ct);
+        var reset = await b.GetRequiredService<IAuthService>().SignInAsync("ucuncu", Password, Ct);
         var customer = await RegisterAsync(a, "giden", 2);
         var rental = await RentAsync(a, User(SeedUserId), ThreeCopiesFilmId);
 
         await accounts.UpdateAsync(Admin(SeedAdminId), secondId, second with { Password = null, Role = UserRole.User }, Ct);
         await accounts.DeleteAsync(Admin(SeedAdminId), customer.UserId, Ct);
+        await accounts.UpdateAsync(Admin(SeedAdminId), thirdId, third with { Password = "Yeni.Sifre123" }, Ct);
 
         var films = b.GetRequiredService<IFilmService>();
         var rentals = b.GetRequiredService<IRentalService>();
@@ -222,13 +227,16 @@ public sealed class SqlServerConcurrencyTests
             () => films.DeleteAsync(demoted, ThreeCopiesFilmId, Ct),
             () => rentals.ReturnAsync(demoted, rental.RentalId, Ct),
             async () => await rentals.RentAsync(customer, await rentals.QuoteAsync(ThreeCopiesFilmId, 25m, 1, Ct), Ct),
+            () => films.AddAsync(reset, new FilmInput("Yeni", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 1, true), Ct),
+            () => b.GetRequiredService<IAccountService>().UpdateAsync(reset, thirdId, third, Ct),
         ];
         foreach (var operation in refused)
         {
             Assert.Equal(AccessDeniedException.SessionRevokedMessage, (await Assert.ThrowsAsync<AccessDeniedException>(operation)).Message);
         }
 
-        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE Rol = N'Admin'", Ct));
+        Assert.Equal(2, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE Rol = N'Admin'", Ct));
+        Assert.Equal(1, await database.ScalarAsync("SELECT OturumSurumu FROM dbo.Kullanicilar WHERE KullaniciID = @id", Ct, ("@id", thirdId)));
         Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Filmler WHERE Ad = N'Yeni'", Ct));
         await AssertStockAsync(database, ThreeCopiesFilmId, active: 1, available: 2);
     }

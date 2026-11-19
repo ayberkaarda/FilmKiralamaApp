@@ -27,7 +27,9 @@ public interface IUserRepository
 
     /// <summary>
     /// Changes an account's name, contact data and role and, when <see cref="AccountUpdate.NewPasswordHash"/>
-    /// is set, its password. The last admin cannot lose the admin role: the check and the write are one
+    /// is set, its password. A new password, or a role different from the stored one, raises the account's
+    /// session version in the same statement, which ends every session issued before. The last admin
+    /// cannot lose the admin role: the check and the write are one
     /// conditional UPDATE, so two concurrent demotions cannot both succeed. The change is made by the
     /// admin <paramref name="actor"/>, whose stored role is checked first under the same lock, so a
     /// demoted admin can neither change accounts nor take the role back.
@@ -45,9 +47,11 @@ public interface IUserRepository
 
     /// <summary>
     /// Replaces the password of <paramref name="verified"/> with <paramref name="newPasswordHash"/>, only
-    /// while the stored password is still the one that was verified.
+    /// while the stored password and session version are still the ones that were verified, and raises
+    /// the session version by one in the same statement, which ends every other session of the account.
     /// </summary>
-    Task<bool> ChangePasswordAsync(AccountCredentials verified, string newPasswordHash, CancellationToken cancellationToken = default);
+    /// <returns>The new session version, or <see langword="null"/> when the account changed meanwhile and nothing was written.</returns>
+    Task<int?> ChangePasswordAsync(AccountCredentials verified, string newPasswordHash, CancellationToken cancellationToken = default);
 
     /// <summary>Whether any account has the admin role.</summary>
     Task<bool> AnyAdminAsync(CancellationToken cancellationToken = default);

@@ -50,6 +50,18 @@ internal static class TestServices
 
     public static UserSession Admin(int id) => new(id, "yonetici" + id.ToString(CultureInfo.InvariantCulture), UserRole.Admin, sessionVersion: 0);
 
+    /// <summary>
+    /// A session of account <paramref name="userId"/> with its stored role and session version, as a new
+    /// sign-in would issue it now.
+    /// </summary>
+    public static async Task<UserSession> CurrentSessionAsync(IServiceProvider provider, int userId)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await provider.GetRequiredService<IDbContextFactory<FilmDbContext>>().CreateDbContextAsync(ct);
+        var account = await db.Users.Where(u => u.Id == userId).Select(u => new { u.UserName, u.Role, u.SessionVersion }).SingleAsync(ct);
+        return new UserSession(userId, account.UserName, account.Role, account.SessionVersion);
+    }
+
     /// <summary>Registers a customer through the real service and returns its session.</summary>
     public static async Task<UserSession> RegisterAsync(IServiceProvider provider, string name, int number)
     {

@@ -392,6 +392,85 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         await rentals.ReturnAsync(renewed, rental.RentalId, Ct);
     }
 
+    /// <summary>
+    /// A password set by another admin ends the account's open sessions even though its role stays the
+    /// same: whoever still holds the old session can manage nothing more. A new sign-in with the new
+    /// password works.
+    /// </summary>
+    [Fact]
+    public async Task PasswordResetByAnAdmin_RevokesTheAccountsOpenSessions()
+    {
+        var accounts = _db.Get<IAccountService>();
+        var auth = _db.Get<IAuthService>();
+        var input = new AccountInput("ikinci", Password, "ikinci@example.com", "5550000003", UserRole.Admin);
+        var second = await accounts.AddAsync(Admin(SeedAdminId), input, Ct);
+        var stolen = await auth.SignInAsync("ikinci", Password, Ct);
+
+        await accounts.UpdateAsync(Admin(SeedAdminId), second, input with { Password = "Yeni.Sifre123" }, Ct);
+
+        List<Func<Task>> refused =
+        [
+            () => accounts.GetAllAsync(stolen, Ct),
+            () => accounts.UpdateAsync(stolen, second, input with { Password = "Geri.Al12345" }, Ct),
+            () => _db.Get<IFilmService>().AddAsync(stolen, new FilmInput("Yeni", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 1, true), Ct),
+        ];
+        foreach (var operation in refused)
+        {
+            Assert.Equal(AccessDeniedException.SessionRevokedMessage, (await Assert.ThrowsAsync<AccessDeniedException>(operation)).Message);
+        }
+
+        var fresh = await auth.SignInAsync("ikinci", "Yeni.Sifre123", Ct);
+        Assert.Equal(1, fresh.SessionVersion);
+        Assert.NotEmpty(await accounts.GetAllAsync(fresh, Ct));
+    }
+
+    /// <summary>
+    /// A role taken away and given back still ends the sessions issued before: the version only rises.
+    /// A change of the contact data alone ends nothing.
+    /// </summary>
+    [Fact]
+    public async Task RoleTakenAndGivenBack_KeepsTheOldSessionRevoked()
+    {
+        var accounts = _db.Get<IAccountService>();
+        var input = new AccountInput("ikinci", Password, "ikinci@example.com", "5550000003", UserRole.Admin);
+        var second = await accounts.AddAsync(Admin(SeedAdminId), input, Ct);
+        var old = await _db.Get<IAuthService>().SignInAsync("ikinci", Password, Ct);
+
+        await accounts.UpdateAsync(Admin(SeedAdminId), second, input with { Password = null, Email = "yeni@example.com" }, Ct);
+        Assert.NotEmpty(await accounts.GetAllAsync(old, Ct));
+
+        await accounts.UpdateAsync(Admin(SeedAdminId), second, input with { Password = null, Role = UserRole.User }, Ct);
+        await accounts.UpdateAsync(Admin(SeedAdminId), second, input with { Password = null, Role = UserRole.Admin }, Ct);
+
+        var error = await Assert.ThrowsAsync<AccessDeniedException>(() => accounts.GetAllAsync(old, Ct));
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, error.Message);
+        Assert.Equal(2, (await _db.Get<IAuthService>().SignInAsync("ikinci", Password, Ct)).SessionVersion);
+    }
+
+    /// <summary>
+    /// Changing one's own password keeps the session that changed it and ends every other session of the
+    /// account, also one that signed in before with the same password.
+    /// </summary>
+    [Fact]
+    public async Task OwnPasswordChange_KeepsThisSessionAndRevokesTheOthers()
+    {
+        var auth = _db.Get<IAuthService>();
+        var here = await auth.SignInAsync("ornek", "Demo.Kullanici1", Ct);
+        var elsewhere = await auth.SignInAsync("ornek", "Demo.Kullanici1", Ct);
+
+        await auth.ChangePasswordAsync(here, "Demo.Kullanici1", "Yeni.Sifre123", "Yeni.Sifre123", Ct);
+
+        Assert.Equal(1, here.SessionVersion);
+        await RentAsync(_db.Services, here, ThreeCopiesFilmId);
+        var error = await Assert.ThrowsAsync<AccessDeniedException>(() => _db.Get<IRentalService>().GetMyActiveRentalsAsync(elsewhere, Ct));
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, error.Message);
+
+        // The revoked session cannot change the password again either, even with the right one.
+        var again = await Assert.ThrowsAsync<AccessDeniedException>(() => auth.ChangePasswordAsync(elsewhere, "Yeni.Sifre123", "Baska.Sifre123", "Baska.Sifre123", Ct));
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, again.Message);
+        await auth.SignInAsync("ornek", "Yeni.Sifre123", Ct);
+    }
+
     /// <summary>A customer cannot make itself an admin, whatever its session says.</summary>
     [Fact]
     public async Task UserSession_CannotRaiseItsOwnRole()

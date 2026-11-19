@@ -127,8 +127,10 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
             await Actors.RequireAsync(db, actor, admin: true, cancellationToken).ConfigureAwait(false);
 
             var id = update.UserId;
-            var keepsAdmin = update.Role == UserRole.Admin;
+            var role = update.Role;
+            var keepsAdmin = role == UserRole.Admin;
             var hash = update.NewPasswordHash;
+            var newPassword = hash is not null;
 
             // The WHERE clause is the final decision: an admin keeps the role, or another admin exists.
             // The admin role lock above keeps a concurrent demotion from passing the same check.
@@ -137,10 +139,14 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
                 .ExecuteUpdateAsync(
                     s =>
                     {
-                        s.SetProperty(u => u.UserName, update.UserName)
+                        // A new role or password ends every open session of the account for good: the
+                        // version is computed from the row before the SET, so it rises exactly when the
+                        // stored role differs or a password is set.
+                        s.SetProperty(u => u.SessionVersion, u => newPassword || u.Role != role ? u.SessionVersion + 1 : u.SessionVersion)
+                            .SetProperty(u => u.UserName, update.UserName)
                             .SetProperty(u => u.Email, update.Email)
                             .SetProperty(u => u.Phone, update.Phone)
-                            .SetProperty(u => u.Role, update.Role);
+                            .SetProperty(u => u.Role, role);
                         if (hash is not null)
                         {
                             // A password set by an admin also lifts a lock.
@@ -205,7 +211,7 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         };
     }
 
-    public async Task<bool> ChangePasswordAsync(AccountCredentials verified, string newPasswordHash, CancellationToken cancellationToken = default)
+    public async Task<int?> ChangePasswordAsync(AccountCredentials verified, string newPasswordHash, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(verified);
         ArgumentException.ThrowIfNullOrEmpty(newPasswordHash);
@@ -214,16 +220,22 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         var id = verified.Id;
         var verifiedHash = verified.PasswordHash;
         var verifiedFormat = verified.PasswordFormat;
+        var verifiedVersion = verified.SessionVersion;
+        var newVersion = verifiedVersion + 1;
+
+        // The WHERE clause is the final decision: the password and the session version are still the ones
+        // that were verified, so a concurrent reset, role change or other password change wins.
         var updated = await db.Users
-            .Where(u => u.Id == id && u.PasswordHash == verifiedHash && u.PasswordFormat == verifiedFormat)
+            .Where(u => u.Id == id && u.PasswordHash == verifiedHash && u.PasswordFormat == verifiedFormat && u.SessionVersion == verifiedVersion)
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(u => u.PasswordHash, newPasswordHash)
                     .SetProperty(u => u.PasswordFormat, PasswordFormat.Pbkdf2)
-                    .SetProperty(u => u.FailedLoginCount, 0),
+                    .SetProperty(u => u.FailedLoginCount, 0)
+                    .SetProperty(u => u.SessionVersion, newVersion),
                 cancellationToken)
             .ConfigureAwait(false);
-        return updated == 1;
+        return updated == 1 ? newVersion : null;
     }
 
     public async Task<bool> AnyAdminAsync(CancellationToken cancellationToken = default)

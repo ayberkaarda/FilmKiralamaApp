@@ -178,8 +178,16 @@ internal sealed class AuthService(
 
         var role = AuditCodes.Of(session.Role);
         var account = await users.FindByIdAsync(session.UserId, cancellationToken).ConfigureAwait(false);
+        if (account is null || account.SessionVersion != session.SessionVersion)
+        {
+            // The account was deleted, or its password or role changed since this session began: the
+            // session has ended, also for changing the password.
+            audit.Record(AuditEvent.SessionRevoked, role);
+            throw new AccessDeniedException(AccessDeniedException.SessionRevokedMessage);
+        }
+
         var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
-        if (account is null || account.LockoutEnd > now || currentPassword.Length > PasswordPolicy.MaxLength)
+        if (account.LockoutEnd > now || currentPassword.Length > PasswordPolicy.MaxLength)
         {
             passwordHasher.SimulateVerification(currentPassword);
             audit.Record(AuditEvent.PasswordChangeRefused, role);
@@ -194,13 +202,15 @@ internal sealed class AuthService(
             throw new BusinessRuleException(CurrentPasswordWrong);
         }
 
-        // Only the password that was just verified is replaced.
-        if (!await users.ChangePasswordAsync(account, passwordHasher.Hash(newPassword), cancellationToken).ConfigureAwait(false))
+        // Only the password that was just verified is replaced. The new session version ends every other
+        // session of the account; this one moves on to it.
+        if (await users.ChangePasswordAsync(account, passwordHasher.Hash(newPassword), cancellationToken).ConfigureAwait(false) is not { } version)
         {
             audit.Record(AuditEvent.PasswordChangeRefused, role);
             throw new BusinessRuleException(CurrentPasswordWrong);
         }
 
+        session.Renew(version);
         audit.Record(AuditEvent.PasswordChanged, role);
     }
 
