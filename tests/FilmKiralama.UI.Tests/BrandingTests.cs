@@ -52,7 +52,7 @@ public sealed class BrandingTests
         try
         {
             Assert.Equal(
-                ["Film Kiralama - Giriş", "Film Kiralama - Kayıt Ol", "Film Kiralama - Şifre Değiştir", "Film Kiralama - Katalog", "Film Kiralama - Kiralama Ekranı", "Kullanıcı Profili", "Yönetim Paneli", "Kiralanan Filmler", "Film Değerlendir", "Yorum Yönetimi", "İzleme Listem", "Raporlar", "Size Önerilenler"],
+                ["Film Kiralama - Giriş", "Film Kiralama - Kayıt Ol", "Film Kiralama - Şifre Değiştir", "Film Kiralama - Katalog", "Film Kiralama - Kiralama Ekranı", "Film Kiralama - Kullanıcı Profili", "Yönetim Paneli", "Kiralanan Filmler", "Film Kiralama - Film Değerlendir", "Yorum Yönetimi", "İzleme Listem", "Raporlar", "Size Önerilenler"],
                 all.Select(f => f.Text));
             Assert.All(all, f => Assert.NotNull(f.Icon));
         }

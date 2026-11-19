@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using FilmKiralama.Business.Reviews;
 using FilmKiralama.Domain.Entities;
+using FilmKiralama.UI.Theming;
 
 namespace FilmKiralama.UI.Infrastructure;
 
@@ -66,6 +67,14 @@ internal sealed record ReviewableItem(ReviewableFilm Film)
     public override string ToString() =>
         $"{Film.Title} ({Film.Genre}, {Film.Year.ToString(CultureInfo.InvariantCulture)}) - "
         + (Film.MyRating is { } rating ? "Puanınız: " + ReviewDisplay.Stars(rating) : "henüz puan vermediniz");
+
+    /// <summary>The row: the title, then the genre and year, and the customer's stars (or that there are none) as a pill.</summary>
+    public ListRow Row() => new(
+        Film.Title,
+        Film.Genre + " · " + Film.Year.ToString(CultureInfo.InvariantCulture),
+        RowTone.Neutral,
+        Film.MyRating is { } rating ? ReviewDisplay.Stars(rating) : "Puan verilmedi",
+        Film.MyRating is null ? RowTone.Neutral : RowTone.Warm);
 }
 
 /// <summary>A rating of the rating box.</summary>

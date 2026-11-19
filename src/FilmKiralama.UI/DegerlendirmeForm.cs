@@ -3,28 +3,32 @@ using FilmKiralama.Business.Reviews;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Domain.Entities;
 using FilmKiralama.UI.Infrastructure;
+using FilmKiralama.UI.Theming;
 
 namespace FilmKiralama.UI
 {
     /// <summary>
     /// The customer's rating and comment of a film they returned: stored, changed or deleted. Closes with
-    /// <see cref="DialogResult.OK"/> when something was saved or deleted.
+    /// <see cref="DialogResult.OK"/> and <see cref="ResultMessage"/> set when something was saved or deleted.
     /// </summary>
-    public sealed class DegerlendirmeForm : Form
+    public sealed class DegerlendirmeForm : AppDialog
     {
         private readonly IReviewService _reviews;
         private readonly UserSession _session;
         private readonly ReviewableFilm _film;
         private readonly ExclusiveOperation _write = new();
-        private readonly ComboBox _rating;
-        private readonly TextBox _comment;
-        private readonly Label _remaining;
-        private readonly Label _hiddenNotice;
-        private readonly Button _save;
-        private readonly Button _delete;
         private int? _reviewId;
 
+        private readonly ThemedComboBox cmbPuan = FormLayout.Picker(nameof(cmbPuan), 220, "Puan seçin");
+        private readonly TextBox txtYorum = new() { Name = nameof(txtYorum), Multiline = true, AcceptsReturn = false, ScrollBars = ScrollBars.Vertical, MaxLength = ReviewPolicy.MaxCommentLength };
+        private readonly Label lblKalan = FormLayout.Hint(string.Empty);
+        private readonly Label lblGizli = FormLayout.Text(nameof(lblGizli), "Bu yorum yönetici tarafından gizlendi; diğer kullanıcılar görmüyor. Değiştirdiğinizde de gizli kalır.");
+        private readonly ThemedButton btnKaydet = FormLayout.Button(nameof(btnKaydet), "Kaydet", ButtonKind.Primary, Glyphs.Save);
+        private readonly ThemedButton btnSil = FormLayout.Button(nameof(btnSil), "Sil", ButtonKind.Danger, Glyphs.Delete);
+        private CardPanel _hiddenNote = null!;
+
         public DegerlendirmeForm(IReviewService reviews, UserSession session, ReviewableFilm film)
+            : base("Film Değerlendir", Describe(film), Glyphs.Star, new Size(580, 500), new Size(460, 440), modal: true)
         {
             ArgumentNullException.ThrowIfNull(reviews);
             ArgumentNullException.ThrowIfNull(session);
@@ -33,85 +37,32 @@ namespace FilmKiralama.UI
             _reviews = reviews;
             _session = session;
             _film = film;
-            Prompts = new MessageBoxPrompts(this);
+            BuildLayout();
+            _write.HoldClosingOf(this);
 
-            Text = "Film Değerlendir";
-            Icon = AppAssets.Icon;
-            Font = new Font("Segoe UI", 10);
-            ClientSize = new Size(480, 360);
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            StartPosition = FormStartPosition.CenterParent;
-
-            var title = new Label
-            {
-                Name = "lblFilm",
-                Text = film.Title + " (" + film.Year.ToString(CultureInfo.InvariantCulture) + ")",
-                Location = new Point(20, 16),
-                Size = new Size(440, 28),
-                Font = new Font("Segoe UI", 12, FontStyle.Bold),
-                UseMnemonic = false,
-                AutoEllipsis = true,
-            };
-            var ratingCaption = new Label { Text = "Puanınız", Location = new Point(20, 58), AutoSize = true };
-            _rating = new ComboBox
-            {
-                Name = "cmbPuan",
-                Location = new Point(20, 82),
-                Width = 200,
-                DropDownStyle = ComboBoxStyle.DropDownList,
-            };
-            _rating.Items.AddRange([.. ReviewDisplay.Choices]);
-
-            var commentCaption = new Label { Text = "Yorumunuz (isteğe bağlı)", Location = new Point(20, 122), AutoSize = true };
-            _comment = new TextBox
-            {
-                Name = "txtYorum",
-                Location = new Point(20, 146),
-                Size = new Size(440, 110),
-                Multiline = true,
-                AcceptsReturn = false,
-                ScrollBars = ScrollBars.Vertical,
-                MaxLength = ReviewPolicy.MaxCommentLength,
-            };
-            _remaining = new Label { Name = "lblKalan", Location = new Point(20, 260), Size = new Size(220, 22) };
-            _hiddenNotice = new Label
-            {
-                Name = "lblGizli",
-                Text = "Bu yorum yönetici tarafından gizlendi; diğer kullanıcılar görmüyor.",
-                Location = new Point(20, 284),
-                Size = new Size(440, 22),
-                Visible = false,
-            };
-            _save = new Button { Name = "btnKaydet", Text = "Kaydet", Location = new Point(250, 312), Size = new Size(100, 34) };
-            _delete = new Button { Name = "btnSil", Text = "Sil", Location = new Point(360, 312), Size = new Size(100, 34), Enabled = false };
-            _comment.TextChanged += (_, _) => ShowRemaining();
-            _save.Click += async (_, _) => await SaveAsync();
-            _delete.Click += async (_, _) => await DeleteAsync();
-
-            Controls.AddRange([title, ratingCaption, _rating, commentCaption, _comment, _remaining, _hiddenNotice, _save, _delete]);
-            AcceptButton = _save;
+            btnSil.Enabled = false;
+            txtYorum.TextChanged += (_, _) => ShowRemaining();
+            btnKaydet.Click += async (_, _) => await SaveAndCloseAsync();
+            btnSil.Click += async (_, _) => await DeleteAndCloseAsync();
             ShowRemaining();
         }
 
-        /// <summary>Confirmations and information; replaced in tests so no window opens.</summary>
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
-
         /// <summary>Whether the notice that an admin hid the review is shown.</summary>
         internal bool ShowsHiddenNotice { get; private set; }
+
+        /// <summary>What the screen that opened this one says once the review was saved or deleted.</summary>
+        internal string? ResultMessage { get; private set; }
 
         /// <summary>Fills the form with the account's own review, if there is one.</summary>
         internal async Task LoadAsync()
         {
             var own = await _reviews.GetOwnAsync(_session, _film.FilmId);
             _reviewId = own?.Id;
-            _rating.SelectedItem = ReviewDisplay.Choices.FirstOrDefault(c => c.Rating == own?.Rating);
-            _comment.Text = own?.Comment ?? string.Empty;
+            cmbPuan.SelectedItem = ReviewDisplay.Choices.FirstOrDefault(c => c.Rating == own?.Rating);
+            txtYorum.Text = own?.Comment ?? string.Empty;
             ShowsHiddenNotice = own?.IsHidden == true;
-            _hiddenNotice.Visible = ShowsHiddenNotice;
-            _delete.Enabled = own is not null;
+            FormLayout.SetShown(_hiddenNote, ShowsHiddenNotice);
+            btnSil.Enabled = own is not null;
         }
 
         /// <summary>Saves the rating and the comment; ignored while a save or a delete is running.</summary>
@@ -122,19 +73,19 @@ namespace FilmKiralama.UI
                 _write,
                 async () =>
                 {
-                    if (_rating.SelectedItem is not RatingChoice choice)
+                    if (cmbPuan.SelectedItem is not RatingChoice choice)
                     {
                         Prompts.Warn("Lütfen 1 ile 5 arasında bir puan seçin.");
-                        _write.FocusAfterUnlock(_rating);
+                        _write.FocusAfterUnlock(cmbPuan);
                         return;
                     }
 
-                    await _reviews.SaveAsync(_session, _film.FilmId, new ReviewInput(choice.Rating, _comment.Text));
+                    await _reviews.SaveAsync(_session, _film.FilmId, new ReviewInput(choice.Rating, txtYorum.Text));
                     saved = true;
-                    Prompts.Inform("Değerlendirmeniz kaydedildi.");
+                    ResultMessage = "\"" + _film.Title + "\" için değerlendirmeniz kaydedildi.";
                 },
-                _save,
-                _delete);
+                btnKaydet,
+                btnSil);
             if (saved)
             {
                 DialogResult = DialogResult.OK;
@@ -158,10 +109,10 @@ namespace FilmKiralama.UI
 
                     await _reviews.DeleteOwnAsync(_session, id);
                     deleted = true;
-                    Prompts.Inform("Değerlendirmeniz silindi.");
+                    ResultMessage = "\"" + _film.Title + "\" için değerlendirmeniz silindi.";
                 },
-                _save,
-                _delete);
+                btnKaydet,
+                btnSil);
             if (deleted)
             {
                 DialogResult = DialogResult.OK;
@@ -176,7 +127,52 @@ namespace FilmKiralama.UI
             await this.RunAsync(LoadAsync);
         }
 
+        private static string Describe(ReviewableFilm? film) =>
+            film is null ? string.Empty : film.Title + " · " + film.Genre + ", " + film.Year.ToString(CultureInfo.InvariantCulture);
+
+        private async Task SaveAndCloseAsync()
+        {
+            if (await SaveAsync() && !IsDisposed)
+            {
+                Close();
+            }
+        }
+
+        private async Task DeleteAndCloseAsync()
+        {
+            if (await DeleteAsync() && !IsDisposed)
+            {
+                Close();
+            }
+        }
+
         private void ShowRemaining() =>
-            _remaining.Text = (ReviewPolicy.MaxCommentLength - _comment.TextLength).ToString(CultureInfo.InvariantCulture) + " karakter kaldı";
+            lblKalan.Text = (ReviewPolicy.MaxCommentLength - txtYorum.TextLength).ToString(CultureInfo.InvariantCulture) + " karakter kaldı";
+
+        private void BuildLayout()
+        {
+            Name = nameof(DegerlendirmeForm);
+            cmbPuan.Items.AddRange([.. ReviewDisplay.Choices]);
+            _hiddenNote = FormLayout.Note("hiddenNote", Glyphs.Hide, lblGizli);
+
+            var rating = FormLayout.Field("&Puanınız", cmbPuan);
+            rating.Margin = new Padding(0, 0, 0, Spacing.M);
+            cmbPuan.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+            lblKalan.Name = nameof(lblKalan);
+            var comment = FormLayout.Field("&Yorumunuz (isteğe bağlı)", FormLayout.Input(txtYorum, Sizes.NoteHeight + Spacing.XL));
+            comment.Controls.Add(lblKalan);
+            comment.Margin = Padding.Empty;
+            var plain = FormLayout.Hint("Yorumlar düz metin olarak gösterilir; satır sonu kullanılamaz. Adınız diğer kullanıcılara kısaltılarak görünür.");
+            plain.Margin = new Padding(0, Spacing.M, 0, 0);
+            var card = FormLayout.Card("reviewCard", null, FormLayout.Stack("reviewForm", rating, comment, plain), fill: false);
+            card.Margin = Padding.Empty;
+            Content.Controls.Add(FormLayout.Page("reviewPage", (_hiddenNote, false), (card, false)));
+            FormLayout.SetShown(_hiddenNote, false);
+
+            AcceptButton = btnKaydet;
+            SetFooterNote("Yalnızca kiralayıp iade ettiğiniz filmleri puanlayabilirsiniz.");
+            SetFooterButtons(btnSil, btnKaydet, CreateCloseButton("btnKapat"));
+            FinishLayout();
+        }
     }
 }

@@ -2,14 +2,15 @@ using FilmKiralama.Business.Reviews;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Domain.Entities;
 using FilmKiralama.UI.Infrastructure;
+using FilmKiralama.UI.Theming;
 
 namespace FilmKiralama.UI
 {
     /// <summary>
-    /// The customer's profile: own active rentals with their return, the returned films the customer can
-    /// rate, and the password change.
+    /// The customer's profile: own active rentals as cards with their return, the returned films the customer
+    /// can rate, and the password change.
     /// </summary>
-    public partial class KullaniciProfil : Form
+    public sealed class KullaniciProfil : AppDialog
     {
         private readonly IRentalService _rentals;
         private readonly IReviewService _reviews;
@@ -18,11 +19,15 @@ namespace FilmKiralama.UI
         private readonly ExclusiveOperation _return = new();
         private readonly RequestSequence _loads = new();
         private readonly RequestSequence _reviewableLoads = new();
-        private readonly Panel _scrollPanel;
-        private readonly ListBox _reviewable;
-        private readonly Button _rate;
+        private bool _binding;
+
+        private readonly CardGrid pnlKiralamalar = new() { Name = nameof(pnlKiralamalar), ItemWidth = 320 };
+        private readonly ThemedListBox lstPuanlanabilir = new() { Name = nameof(lstPuanlanabilir) };
+        private readonly ThemedButton btnPuanVer = FormLayout.Button(nameof(btnPuanVer), "Puan ver / düzenle", ButtonKind.Primary, Glyphs.Star);
+        private readonly ThemedButton btnSifreDegistir = FormLayout.Button(nameof(btnSifreDegistir), "Şifre değiştir", ButtonKind.Secondary, Glyphs.Key);
 
         public KullaniciProfil(IRentalService rentals, IReviewService reviews, IFormFactory forms, UserSession session)
+            : base("Kullanıcı Profili", "Hoş geldin, " + AppText.DisplayName(session?.UserName ?? string.Empty) + ". Kiraladıklarınız ve puanlarınız burada.", Glyphs.Person, new Size(1100, 680), new Size(860, 540), modal: true)
         {
             ArgumentNullException.ThrowIfNull(rentals);
             ArgumentNullException.ThrowIfNull(reviews);
@@ -33,32 +38,26 @@ namespace FilmKiralama.UI
             _reviews = reviews;
             _forms = forms;
             _session = session;
-            Prompts = new MessageBoxPrompts(this);
+            BuildLayout();
+            _return.HoldClosingOf(this);
 
-            InitializeComponent();
-            ClientSize = new Size(ClientSize.Width, ClientSize.Height + 190);
-            Icon = AppAssets.Icon;
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            MaximumSize = Size;
-            MinimumSize = Size;
-
-            BuildHeader();
-            (_reviewable, _rate) = BuildReviewPanel();
-            _scrollPanel = new Panel
+            btnPuanVer.Enabled = false;
+            lstPuanlanabilir.SelectedIndexChanged += (_, _) =>
             {
-                Dock = DockStyle.Fill,
-                AutoScroll = true,
-                BackgroundImage = AppAssets.Background,
-                Padding = new Padding(0, 10, 0, 0),
+                // Filling the list is not a choice of the user.
+                if (!_binding)
+                {
+                    btnPuanVer.Enabled = lstPuanlanabilir.SelectedItem is ReviewableItem;
+                }
             };
-            Controls.Add(_scrollPanel);
-            Controls.SetChildIndex(_scrollPanel, 0);
+            lstPuanlanabilir.DoubleClick += async (_, _) => await RateSelectedAsync();
+            btnPuanVer.Click += async (_, _) => await RateSelectedAsync();
+            btnSifreDegistir.Click += (_, _) => ChangePassword();
         }
 
-        /// <summary>Confirmations and information; replaced in tests so no window opens.</summary>
+        /// <summary>Shows the posters of the rentals; replaced by the screenshot tool so no download starts.</summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
+        internal PosterLoader Posters { get; set; } = PosterLoader.Default;
 
         /// <summary>The rentals shown now, for tests.</summary>
         internal IReadOnlyList<RentalDetails> ShownRentals { get; private set; } = [];
@@ -72,10 +71,21 @@ namespace FilmKiralama.UI
         internal async Task LoadRentalsAsync()
         {
             var request = _loads.Next();
-            var rentals = await _rentals.GetMyActiveRentalsAsync(_session);
-            if (_loads.IsLatest(request) && !IsDisposed)
+            pnlKiralamalar.IsLoading = true;
+            try
             {
-                ShowRentals(rentals);
+                var rentals = await _rentals.GetMyActiveRentalsAsync(_session);
+                if (_loads.IsLatest(request) && !IsDisposed)
+                {
+                    ShowRentals(rentals);
+                }
+            }
+            finally
+            {
+                if (_loads.IsLatest(request) && !IsDisposed)
+                {
+                    pnlKiralamalar.IsLoading = false;
+                }
             }
         }
 
@@ -83,30 +93,35 @@ namespace FilmKiralama.UI
         internal async Task LoadReviewableAsync()
         {
             var request = _reviewableLoads.Next();
-            var films = await _reviews.GetReviewableAsync(_session);
-            if (!_reviewableLoads.IsLatest(request) || IsDisposed)
-            {
-                return;
-            }
-
-            ShownReviewable = films;
-            _reviewable.BeginUpdate();
+            lstPuanlanabilir.IsLoading = true;
             try
             {
-                _reviewable.Items.Clear();
-                foreach (var film in films)
+                var films = await _reviews.GetReviewableAsync(_session);
+                if (!_reviewableLoads.IsLatest(request) || IsDisposed)
                 {
-                    _reviewable.Items.Add(new ReviewableItem(film));
+                    return;
                 }
 
-                _reviewable.SelectedIndex = -1;
+                ShownReviewable = films;
+                _binding = true;
+                try
+                {
+                    lstPuanlanabilir.ReplaceItems(films.Select(f => new ReviewableItem(f)));
+                }
+                finally
+                {
+                    _binding = false;
+                }
+
+                btnPuanVer.Enabled = false;
             }
             finally
             {
-                _reviewable.EndUpdate();
+                if (_reviewableLoads.IsLatest(request) && !IsDisposed)
+                {
+                    lstPuanlanabilir.IsLoading = false;
+                }
             }
-
-            _rate.Enabled = false;
         }
 
         /// <summary>
@@ -135,7 +150,7 @@ namespace FilmKiralama.UI
                     returned = true;
                     Prompts.Inform(receipt.LateFee > 0m
                         ? $"Film iade edildi. Gecikme ücreti: {DisplayFormat.Money(receipt.LateFee)}"
-                        : "Film iade edildi.");
+                        : "Film iade edildi. Artık puan verebilirsiniz.");
                     await LoadRentalsAsync();
 
                     // A returned film can be rated now.
@@ -155,160 +170,76 @@ namespace FilmKiralama.UI
             });
         }
 
-        private (ListBox List, Button Rate) BuildReviewPanel()
-        {
-            var panel = new Panel { Name = "pnlDegerlendir", Dock = DockStyle.Bottom, Height = 190, BackColor = Color.FromArgb(240, 240, 240) };
-            var caption = new Label
-            {
-                Text = "Puan verebileceğiniz filmler (kiralayıp iade ettikleriniz)",
-                Location = new Point(20, 10),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 10, FontStyle.Bold),
-                ForeColor = Color.Black,
-            };
-            var list = new ListBox
-            {
-                Name = "lstPuanlanabilir",
-                Location = new Point(20, 36),
-                Size = new Size(600, 140),
-                Font = new Font("Segoe UI", 10),
-                IntegralHeight = false,
-            };
-            var rate = new Button
-            {
-                Name = "btnPuanVer",
-                Text = "Puan Ver / Düzenle",
-                Location = new Point(640, 36),
-                Size = new Size(180, 40),
-                Enabled = false,
-            };
-            list.SelectedIndexChanged += (_, _) => rate.Enabled = list.SelectedItem is ReviewableItem;
-            list.DoubleClick += async (_, _) => await RateSelectedAsync();
-            rate.Click += async (_, _) => await RateSelectedAsync();
-            panel.Controls.AddRange([caption, list, rate]);
-            Controls.Add(panel);
-            return (list, rate);
-        }
-
         private async Task RateSelectedAsync()
         {
-            if (_reviewable.SelectedItem is not ReviewableItem item)
+            if (lstPuanlanabilir.SelectedItem is not ReviewableItem item || _return.IsRunning)
             {
                 return;
             }
 
-            DialogResult result;
+            string? message;
             using (var form = _forms.Create<DegerlendirmeForm>(_session, item.Film))
             {
-                result = form.ShowDialog(this);
+                message = form.ShowDialog(this) == DialogResult.OK ? form.ResultMessage : null;
             }
 
-            if (result == DialogResult.OK)
+            if (message is not null && !IsDisposed)
             {
+                ShowStatus(StatusKind.Success, message);
                 await this.RunAsync(LoadReviewableAsync);
             }
         }
 
-        private Panel BuildHeader()
+        private void ChangePassword()
         {
-            var header = new Panel
+            using var form = _forms.Create<SifreDegistirmeForm>(_session);
+            if (form.ShowDialog(this) == DialogResult.OK && !IsDisposed)
             {
-                Size = new Size(ClientSize.Width, 80),
-                Dock = DockStyle.Top,
-                BackColor = Color.SteelBlue,
-            };
-            Controls.Add(header);
-
-            header.Controls.Add(new Label
-            {
-                Text = "Hoş geldin, " + AppText.DisplayName(_session.UserName),
-                Font = new Font("Arial", 14, FontStyle.Bold),
-                ForeColor = Color.White,
-                Location = new Point(20, 25),
-                AutoSize = true,
-            });
-
-            var changePassword = new Button
-            {
-                Text = "Şifre Değiştir",
-                Size = new Size(120, 35),
-                Location = new Point(header.Width - 140, 22),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                BackColor = Color.White,
-                ForeColor = Color.SteelBlue,
-                FlatStyle = FlatStyle.Flat,
-            };
-            changePassword.Click += (_, _) =>
-            {
-                using var form = _forms.Create<SifreDegistirmeForm>(_session);
-                form.ShowDialog(this);
-            };
-            header.Controls.Add(changePassword);
-            return header;
+                ShowStatus(StatusKind.Success, "Şifreniz değiştirildi.");
+            }
         }
 
         private void ShowRentals(IReadOnlyList<RentalDetails> rentals)
         {
             ShownRentals = rentals;
-            var buttons = new List<Button>();
-            _scrollPanel.SuspendLayout();
-            try
+            var cards = new List<RentalCard>();
+            foreach (var rental in rentals)
             {
-                foreach (Control old in _scrollPanel.Controls.Cast<Control>().ToList())
-                {
-                    old.Dispose();
-                }
-
-                var y = 20 + _scrollPanel.AutoScrollPosition.Y;
-                foreach (var rental in rentals)
-                {
-                    var card = new Panel
-                    {
-                        Size = new Size(600, 210),
-                        Location = new Point(20, y),
-                        BackColor = Color.FromArgb(230, 230, 230),
-                    };
-
-                    var poster = new PictureBox { Size = new Size(150, 210), Location = new Point(0, 0), SizeMode = PictureBoxSizeMode.StretchImage };
-                    poster.ShowPoster(rental.ImageUrl);
-                    card.Controls.Add(poster);
-
-                    card.Controls.Add(new Label
-                    {
-                        Location = new Point(180, 20),
-                        Size = new Size(230, 160),
-                        Font = new Font("Segoe UI", 10, FontStyle.Bold),
-                        ForeColor = Color.Black,
-                        Text = $"Film: {rental.FilmTitle} - {rental.Genre}\n\n"
-                            + $"Alış Tarihi: {DisplayFormat.Date(rental.RentedOn)}\n\n"
-                            + $"İade Tarihi: {DisplayFormat.Date(rental.DueOn)}\n\n"
-                            + $"Toplam Ücret: {DisplayFormat.Money(rental.Price)}",
-                    });
-
-                    var returnButton = new Button
-                    {
-                        Text = "İade Et",
-                        Size = new Size(150, 40),
-                        Location = new Point(420, 140),
-                        BackColor = Color.IndianRed,
-                        ForeColor = Color.White,
-                        FlatStyle = FlatStyle.Flat,
-                    };
-                    var current = rental;
-                    returnButton.Click += async (_, _) => await ReturnAsync(current);
-                    card.Controls.Add(returnButton);
-                    buttons.Add(returnButton);
-
-                    _scrollPanel.Controls.Add(card);
-                    y = card.Bottom + 20;
-                }
-            }
-            finally
-            {
-                _scrollPanel.ResumeLayout();
+                var card = new RentalCard(rental, "İade et");
+                var current = rental;
+                card.Action.Click += async (_, _) => await ReturnAsync(current);
+                Posters.Show(card.Poster, rental.ImageUrl);
+                cards.Add(card);
             }
 
-            ReturnButtons = buttons;
+            pnlKiralamalar.SetItems(cards);
+            ReturnButtons = [.. cards.Select(c => c.Action)];
+        }
+
+        private void BuildLayout()
+        {
+            Name = nameof(KullaniciProfil);
+            pnlKiralamalar.EmptyText = "Şu anda kiradaki filminiz yok. Katalogdan bir film kiraladığınızda burada görünür.";
+            pnlKiralamalar.BackColor = Theme.Current.Surface;
+            pnlKiralamalar.MinimumSize = new Size(0, 200);
+            var rentalsCard = FormLayout.Card("rentalsCard", "Kiradaki filmlerim", pnlKiralamalar);
+            rentalsCard.Margin = Padding.Empty;
+
+            lstPuanlanabilir.Describe = item => item is ReviewableItem reviewable ? reviewable.Row() : new ListRow(item.ToString() ?? string.Empty);
+            lstPuanlanabilir.EmptyText = "Puan verebileceğiniz film yok. Kiraladığınız filmleri iade ettikten sonra puanlayabilirsiniz.";
+            lstPuanlanabilir.AccessibleName = "Puan verebileceğiniz filmler";
+            btnPuanVer.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+            btnPuanVer.Margin = new Padding(0, Spacing.M, 0, 0);
+            var hint = FormLayout.Hint("Kiralayıp iade ettiğiniz filmler. Bir filmi seçin ya da çift tıklayın.");
+            hint.Margin = new Padding(0, 0, 0, Spacing.S);
+            var rateCard = FormLayout.Card("rateCard", "Puan verebileceğiniz filmler", FormLayout.Page("ratePage", (hint, false), (lstPuanlanabilir, true), (btnPuanVer, false)));
+            rateCard.Margin = Padding.Empty;
+            btnPuanVer.Dock = DockStyle.None;
+
+            Content.Controls.Add(FormLayout.Columns("layout", rentalsCard, 58, rateCard));
+            SetFooterNote("İade edilen filmin kopyası rafa döner; geciken iadelerde gecikme ücreti önce gösterilir.");
+            SetFooterButtons(btnSifreDegistir, CreateCloseButton("btnKapat"));
+            FinishLayout();
         }
     }
 }
