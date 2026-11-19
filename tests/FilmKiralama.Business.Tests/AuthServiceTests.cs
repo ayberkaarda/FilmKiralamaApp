@@ -54,7 +54,7 @@ public sealed class AuthServiceTests
 
         // Wrong password.
         Setup(Account(hash));
-        _users.Setup(u => u.RecordFailedLoginAsync(7, LoginPolicy.MaxFailedAttempts, Now.AddMinutes(15), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _users.Setup(u => u.RecordFailedLoginAsync(It.Is<FailedSignIn>(f => f.UserName == UserName && f.SessionVersion == 0), LoginPolicy.MaxFailedAttempts, TimeSpan.FromMinutes(15), Now, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         messages.Add((await Assert.ThrowsAsync<BusinessRuleException>(() => Service().SignInAsync(UserName, "Yanlis.Sifre1", Ct))).Message);
 
         // Locked account, even with the right password.
@@ -78,11 +78,11 @@ public sealed class AuthServiceTests
     public async Task SignIn_WrongPassword_CountsTheFailureWithAFifteenMinuteLock()
     {
         Setup(Account(_hasher.Hash(Password)));
-        _users.Setup(u => u.RecordFailedLoginAsync(7, 5, Now.AddMinutes(15), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _users.Setup(u => u.RecordFailedLoginAsync(It.Is<FailedSignIn>(f => f.UserName == UserName && f.SessionVersion == 0), 5, TimeSpan.FromMinutes(15), Now, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         await Assert.ThrowsAsync<BusinessRuleException>(() => Service().SignInAsync(UserName, "Yanlis.Sifre1", Ct));
 
-        _users.Verify(u => u.RecordFailedLoginAsync(7, 5, Now.AddMinutes(15), It.IsAny<CancellationToken>()), Times.Once);
+        _users.Verify(u => u.RecordFailedLoginAsync(It.Is<FailedSignIn>(f => f.UserName == UserName && f.SessionVersion == 0), 5, TimeSpan.FromMinutes(15), Now, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -204,7 +204,7 @@ public sealed class AuthServiceTests
     {
         var account = Account(_hasher.Hash(Password));
         _users.Setup(u => u.FindByIdAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(account);
-        _users.Setup(u => u.RecordFailedLoginAsync(7, 5, Now.AddMinutes(15), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _users.Setup(u => u.RecordFailedLoginAsync(It.Is<FailedSignIn>(f => f.UserName == UserName && f.SessionVersion == 0), 5, TimeSpan.FromMinutes(15), Now, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
             () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User, sessionVersion: 0), "Yanlis.Sifre1", "Yeni.Sifre12", "Yeni.Sifre12", Ct));
@@ -296,7 +296,7 @@ public sealed class AuthServiceTests
         clock.Setup(c => c.GetUtcNowAsync(It.IsAny<CancellationToken>())).Callback(() => steps.Add("clock")).ReturnsAsync(Now);
         _users.Setup(u => u.FindByUserNameAsync("kimse", It.IsAny<CancellationToken>())).Callback(() => steps.Add("lookup")).ReturnsAsync((AccountCredentials?)null);
         _users.Setup(u => u.FindByUserNameAsync(UserName, It.IsAny<CancellationToken>())).Callback(() => steps.Add("lookup")).ReturnsAsync(Account(_hasher.Hash(Password)));
-        _users.Setup(u => u.RecordFailedLoginAsync(7, LoginPolicy.MaxFailedAttempts, Now.AddMinutes(15), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _users.Setup(u => u.RecordFailedLoginAsync(It.Is<FailedSignIn>(f => f.UserName == UserName && f.SessionVersion == 0), LoginPolicy.MaxFailedAttempts, TimeSpan.FromMinutes(15), Now, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         var service = new AuthService(_users.Object, _hasher, clock.Object, _audit, TestValidators.SignIn, TestValidators.SignUp, TestValidators.PasswordChange);
 
         await Assert.ThrowsAsync<BusinessRuleException>(() => service.SignInAsync("kimse", Password, Ct));
@@ -318,6 +318,7 @@ public sealed class AuthServiceTests
     [InlineData(typeof(RentalActor))]
     [InlineData(typeof(RentalRequest))]
     [InlineData(typeof(AccountCredentials))]
+    [InlineData(typeof(FailedSignIn))]
     public void SessionVersion_HasNoDefaultValue(Type type)
     {
         var parameters = type.GetConstructors(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)

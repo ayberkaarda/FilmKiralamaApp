@@ -88,10 +88,13 @@ internal sealed class AuthService(
         var result = passwordHasher.Verify(password, account.PasswordHash, account.PasswordFormat);
         if (result == PasswordVerificationResult.Failed)
         {
+            // Counted only against the credential just checked, and only while no lock is in force when
+            // the failure is written (decided by the database).
             await users.RecordFailedLoginAsync(
-                account.Id,
+                FailedSignIn.For(account),
                 LoginPolicy.MaxFailedAttempts,
-                now + LoginPolicy.LockoutDuration,
+                LoginPolicy.LockoutDuration,
+                now,
                 cancellationToken).ConfigureAwait(false);
             throw Refused();
         }
@@ -197,7 +200,7 @@ internal sealed class AuthService(
         if (passwordHasher.Verify(currentPassword, account.PasswordHash, account.PasswordFormat) == PasswordVerificationResult.Failed)
         {
             // Counted like a failed sign-in: an unattended session cannot be used to guess the password.
-            await users.RecordFailedLoginAsync(account.Id, LoginPolicy.MaxFailedAttempts, now + LoginPolicy.LockoutDuration, cancellationToken).ConfigureAwait(false);
+            await users.RecordFailedLoginAsync(FailedSignIn.For(account), LoginPolicy.MaxFailedAttempts, LoginPolicy.LockoutDuration, now, cancellationToken).ConfigureAwait(false);
             audit.Record(AuditEvent.PasswordChangeRefused, role);
             throw new BusinessRuleException(CurrentPasswordWrong);
         }

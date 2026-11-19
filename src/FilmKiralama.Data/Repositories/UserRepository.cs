@@ -337,13 +337,44 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         }
     }
 
-    public async Task RecordFailedLoginAsync(int userId, int maxAttempts, DateTime lockoutEnd, CancellationToken cancellationToken = default)
+    public async Task RecordFailedLoginAsync(FailedSignIn attempt, int maxAttempts, TimeSpan lockoutDuration, DateTime now, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(attempt);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxAttempts, 1);
+
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-        // One UPDATE statement, so concurrent failures cannot lose increments.
+        // One conditional UPDATE: concurrent failures cannot lose increments, a failure that arrives while
+        // a lock is in force counts nothing (and neither extends nor ends the lock), and one checked against
+        // a password or session version that has been replaced since counts nothing either.
+        var (name, hash, format, version) = (attempt.UserName, attempt.PasswordHash, (int)attempt.PasswordFormat, attempt.SessionVersion);
+        if (db.Database.IsSqlServer())
+        {
+            // The database's clock decides at the moment of the write, both whether a lock is in force and
+            // when a new one ends; every SET expression sees the row as it was before the statement.
+            var seconds = (int)lockoutDuration.TotalSeconds;
+            await db.Database.ExecuteSqlAsync(
+                $"""
+                UPDATE dbo.Kullanicilar
+                SET KilitBitis = CASE WHEN BasarisizGiris + 1 >= {maxAttempts} THEN DATEADD(second, {seconds}, SYSUTCDATETIME()) ELSE KilitBitis END,
+                    BasarisizGiris = CASE WHEN BasarisizGiris + 1 >= {maxAttempts} THEN 0 ELSE BasarisizGiris + 1 END
+                WHERE KullaniciAdi = {name}
+                  AND (KilitBitis IS NULL OR KilitBitis <= SYSUTCDATETIME())
+                  AND Sifre = {hash} AND SifreBicimi = {format} AND OturumSurumu = {version}
+                """,
+                cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        // Other providers (the tests' SQLite) have no database clock and use the attempt's time.
+        var lockoutEnd = now + lockoutDuration;
+        var passwordFormat = attempt.PasswordFormat;
         await db.Users
-            .Where(u => u.Id == userId)
+            .Where(u => u.UserName == name
+                && (u.LockoutEnd == null || u.LockoutEnd <= now)
+                && u.PasswordHash == hash
+                && u.PasswordFormat == passwordFormat
+                && u.SessionVersion == version)
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(u => u.LockoutEnd, u => u.FailedLoginCount + 1 >= maxAttempts ? lockoutEnd : u.LockoutEnd)

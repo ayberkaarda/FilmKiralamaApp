@@ -44,6 +44,22 @@ public sealed record AccountCredentials(
     DateTime? LockoutEnd,
     int SessionVersion);
 
+/// <summary>
+/// A refused sign-in (or a wrong current password) to count against account <see cref="UserName"/>: the
+/// password value, its format and the session version are the ones the refused attempt was checked
+/// against. The failure is counted only while the stored account still has all three, so an attempt
+/// checked against a password that has been replaced since counts nothing.
+/// </summary>
+public sealed record FailedSignIn(string UserName, string PasswordHash, PasswordFormat PasswordFormat, int SessionVersion)
+{
+    /// <summary>A failure checked against <paramref name="account"/> as it was read.</summary>
+    public static FailedSignIn For(AccountCredentials account)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        return new(account.UserName, account.PasswordHash, account.PasswordFormat, account.SessionVersion);
+    }
+}
+
 /// <summary>A usable setup key, as a given key is compared with it.</summary>
 public sealed record StoredSetupKey(int Id, byte[] KeyHash);
 
