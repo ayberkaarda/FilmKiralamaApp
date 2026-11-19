@@ -19,6 +19,8 @@ public sealed class CatalogSearchTests
     {
         { new CatalogQuery(Title: new string('a', 51)), CatalogQueryValidator.TitleTooLong },
         { new CatalogQuery(Title: "gizli" + (char)0x202E), CatalogQueryValidator.TitleInvalid },
+        { new CatalogQuery(Genre: new string('a', 51)), CatalogQueryValidator.GenreTooLong },
+        { new CatalogQuery(Genre: "Dram" + (char)0x200B), CatalogQueryValidator.GenreInvalid },
         { new CatalogQuery(YearFrom: 1899), CatalogQueryValidator.YearInvalid },
         { new CatalogQuery(YearTo: 10_000), CatalogQueryValidator.YearInvalid },
         { new CatalogQuery(YearFrom: 2001, YearTo: 2000), CatalogQueryValidator.YearsReversed },

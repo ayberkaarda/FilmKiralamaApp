@@ -254,7 +254,7 @@ internal sealed class FilmFieldsValidator : AbstractValidator<FilmFields>
 
 /// <summary>
 /// A catalog search: a title of at most <see cref="InputRules.TitleMaxLength"/> characters of plain text,
-/// years from <see cref="InputRules.MinYear"/> to <see cref="CatalogQueryValidator.MaxYear"/> in order, a
+/// a genre of at most <see cref="InputRules.GenreMaxLength"/> characters of plain text, years from <see cref="InputRules.MinYear"/> to <see cref="CatalogQueryValidator.MaxYear"/> in order, a
 /// minimum rating of one to five stars and a page of 1 or more with 1 to
 /// <see cref="CatalogQuery.MaxPageSize"/> films.
 /// </summary>
@@ -264,6 +264,7 @@ internal sealed class CatalogQueryValidator : AbstractValidator<CatalogQuery>
     internal const int MaxYear = 9999;
 
     internal const string TitleInvalid = "Aranan ad görünmeyen veya kontrol karakterleri içeremez.";
+    internal const string GenreInvalid = "Aranan tür görünmeyen veya kontrol karakterleri içeremez.";
     internal const string YearsReversed = "Başlangıç yılı bitiş yılından büyük olamaz.";
     internal const string RatingInvalid = "En düşük puan 1 ile 5 arasında olmalıdır.";
     internal const string PageInvalid = "Sayfa numarası 1 veya daha büyük olmalıdır.";
@@ -271,6 +272,10 @@ internal sealed class CatalogQueryValidator : AbstractValidator<CatalogQuery>
     internal static readonly string TitleTooLong = string.Create(
         CultureInfo.InvariantCulture,
         $"Aranan ad en fazla {InputRules.TitleMaxLength} karakter olabilir.");
+
+    internal static readonly string GenreTooLong = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Aranan tür en fazla {InputRules.GenreMaxLength} karakter olabilir.");
 
     internal static readonly string YearInvalid = string.Create(
         CultureInfo.InvariantCulture,
@@ -290,7 +295,8 @@ internal sealed class CatalogQueryValidator : AbstractValidator<CatalogQuery>
             .Must(t => InputRules.IsPlainText(t!)).WithMessage(TitleInvalid)
             .When(q => q.Title is not null);
         RuleFor(q => q.Genre)
-            .Must(g => g!.Length <= InputRules.GenreMaxLength).WithMessage(_ => TitleTooLong)
+            .Must(g => g!.Length <= InputRules.GenreMaxLength).WithMessage(_ => GenreTooLong)
+            .Must(g => InputRules.IsPlainText(g!)).WithMessage(GenreInvalid)
             .When(q => q.Genre is not null);
         RuleFor(q => q.YearFrom)
             .InclusiveBetween(InputRules.MinYear, MaxYear).WithMessage(_ => YearInvalid)
