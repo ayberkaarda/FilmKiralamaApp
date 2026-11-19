@@ -11,42 +11,58 @@ internal sealed class ReviewRepository(IDbContextFactory<FilmDbContext> contextF
     {
         try
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            await Actors.RequireAsync(db, userId, admin: false, cancellationToken).ConfigureAwait(false);
-
-            // Only someone who has watched the film may rate it: a returned rental of this account.
-            var eligible = await db.Rentals
-                .AnyAsync(r => r.UserId == userId && r.FilmId == filmId && r.Status == RentalStatus.Returned, cancellationToken)
-                .ConfigureAwait(false);
-            if (!eligible)
-            {
-                return ReviewSaveOutcome.NotEligible;
-            }
-
-            var updated = await UpdateAsync(db, userId, filmId, rating, comment, now, cancellationToken).ConfigureAwait(false);
-            if (!updated)
-            {
-                db.Reviews.Add(new Review { UserId = userId, FilmId = filmId, Rating = rating, Comment = comment, UpdatedAt = now });
-                await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-            return updated ? ReviewSaveOutcome.Updated : ReviewSaveOutcome.Created;
+            var outcome = await SaveOnceAsync(userId, filmId, rating, comment, now, insert: true, cancellationToken).ConfigureAwait(false);
+            return outcome ?? throw new InvalidOperationException("A save that may insert always has an outcome.");
         }
         catch (DbUpdateException)
         {
             // The unique index took a review of the same account and film stored concurrently; this save
-            // becomes a change of it. The eligibility was checked above and a review is never deleted by
-            // anyone but its author, so the change is still allowed.
-            await using var retry = await contextFactory.CreateDbContextAsync(CancellationToken.None).ConfigureAwait(false);
-            if (await UpdateAsync(retry, userId, filmId, rating, comment, now, CancellationToken.None).ConfigureAwait(false))
+            // becomes a change of it, in a transaction of its own with the account and the eligibility
+            // checked again. When no such review exists the insert failed for another reason, which is
+            // thrown as it was.
+            var retried = await SaveOnceAsync(userId, filmId, rating, comment, now, insert: false, CancellationToken.None).ConfigureAwait(false);
+            if (retried is { } changed)
             {
-                return ReviewSaveOutcome.Updated;
+                return changed;
             }
 
             throw;
         }
+    }
+
+    /// <summary>
+    /// One attempt of <see cref="SaveAsync"/> in its own transaction. Without <paramref name="insert"/> it
+    /// only changes an existing review and returns <see langword="null"/> when there is none.
+    /// </summary>
+    private async Task<ReviewSaveOutcome?> SaveOnceAsync(int userId, int filmId, int rating, string? comment, DateTime now, bool insert, CancellationToken cancellationToken)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, userId, admin: false, cancellationToken).ConfigureAwait(false);
+
+        // Only someone who has watched the film may rate it: a returned rental of this account.
+        var eligible = await db.Rentals
+            .AnyAsync(r => r.UserId == userId && r.FilmId == filmId && r.Status == RentalStatus.Returned, cancellationToken)
+            .ConfigureAwait(false);
+        if (!eligible)
+        {
+            return ReviewSaveOutcome.NotEligible;
+        }
+
+        var updated = await UpdateAsync(db, userId, filmId, rating, comment, now, cancellationToken).ConfigureAwait(false);
+        if (!updated)
+        {
+            if (!insert)
+            {
+                return null;
+            }
+
+            db.Reviews.Add(new Review { UserId = userId, FilmId = filmId, Rating = rating, Comment = comment, UpdatedAt = now });
+            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return updated ? ReviewSaveOutcome.Updated : ReviewSaveOutcome.Created;
     }
 
     public async Task<ReviewDetails?> FindOwnAsync(int userId, int filmId, CancellationToken cancellationToken = default)
