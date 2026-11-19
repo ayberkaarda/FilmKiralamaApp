@@ -50,6 +50,8 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) esas alınara
 
 - Afiş boyutları çözülmeden önce dosya başlığından denetlenir; dev bir bit eşlem bildiren küçük bir dosya
   çözülmeden reddedilir. Aynı anda en fazla üç afiş indirilir.
+- Çözülen afiş tam boyutu yerine yalnızca kart boyutunda (en fazla 480 × 720) tutulur; böylece bir kart sayfasının
+  tuttuğu bellek görsellerin boyutuyla artmaz.
 - Afiş indirmeleri, IPv4'e çevrilmiş ve yerel kullanımlı NAT64 IPv6 adreslerine gizlenmiş özel adresleri, belgeleme
   ve atma adreslerini reddeder.
 

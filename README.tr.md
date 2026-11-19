@@ -365,7 +365,8 @@ Tehdit modeli için [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) dosyasına bak�
   IPv4 uyumlu, IPv4 eşlemeli ya da IPv4'e çevrilmiş bir IPv6 adresinin içine gizlendiğinde de), yönlendirmeler
   yeniden denetlenerek, en fazla 2 MB ve 10 saniye içinde indirilir; yerel yollar, ağ paylaşımları ve yerel ağ
   adresleri asla açılmaz. Piksel boyutu dosya başlığından okunur; kenarı 4096 pikseli ya da toplamı 16 megapikseli
-  aşan görsel çözülmeden reddedilir. Aynı anda en fazla üç afiş indirilir.
+  aşan görsel çözülmeden reddedilir. Aynı anda en fazla üç afiş indirilip çözülür ve çözülen afiş yalnızca kart
+  boyutunda (en fazla 480 × 720) tutulur; böylece bir kart sayfası afiş başına yaklaşık 1,4 MB tutar.
 - Yorumlar uzunluk sınırlı düz metindir; ne yorumlar ne aramalar ne de adlar log dosyasına girer. Reddedilen ya da
   başka bir hesaba ait yorum ve izleme listesi işlemleri, olmayan kayıtlarla aynı girdileri (hiçbir girdi) bırakır.
 - Rapor CSV dosyaları hesap tablosu için güvenlidir (formül öneki) ve bir dosyanın yerine ancak tamamlandıktan

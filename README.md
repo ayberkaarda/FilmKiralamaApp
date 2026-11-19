@@ -367,7 +367,8 @@ See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the threat model.
   IPv4 address hides in a NAT64, 6to4, IPv4-compatible, IPv4-mapped or IPv4-translated IPv6 address), with redirects
   checked again, at most 2 MB and within 10 seconds; local paths, network shares and local network addresses are
   never opened. The pixel size is read from the file header and an image beyond 4096 pixels a side or 16
-  megapixels is refused before it is decoded; at most three posters download at a time.
+  megapixels is refused before it is decoded; at most three posters download and decode at a time, and a decoded
+  poster is kept only at card size (at most 480 × 720), so a page of cards holds about 1.4 MB a poster.
 - Review comments are plain text with a length limit; neither comments nor searches nor names reach the log file,
   and refused or foreign review and watchlist operations leave the same entries (none) as missing ones.
 - Report CSV files are spreadsheet safe (formula prefixes) and replace a file only once they are complete.

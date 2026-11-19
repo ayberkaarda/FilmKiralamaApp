@@ -49,6 +49,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Poster sizes are checked from the file header before decoding, so a small file that declares a huge bitmap is
   refused without being decoded; at most three posters download at a time.
+- A decoded poster is kept only at card size (at most 480 × 720) instead of at its full size, so the memory a page
+  of cards holds no longer grows with the size of the images.
 - Poster downloads refuse private addresses hidden in IPv4-translated and local-use NAT64 IPv6 addresses, and
   documentation and discard-only addresses.
 
