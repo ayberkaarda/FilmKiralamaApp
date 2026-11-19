@@ -547,6 +547,37 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         await auth.SignInAsync("baska", Password, Ct);
     }
 
+    /// <summary>
+    /// Attempts while the lock is in force, and attempts with a name no account has, make the same failure
+    /// write as a wrong password, but it changes nothing: the counter, the lock's end and every other
+    /// account stay as they were.
+    /// </summary>
+    [Fact]
+    public async Task SignIn_WhileLockedOrUnknown_ChangesNoAccount()
+    {
+        await RegisterAsync(_db.Services, "baska", 1);
+        var auth = _db.Get<IAuthService>();
+        for (var i = 0; i < 5; i++)
+        {
+            await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInAsync("baska", "Yanlis.Sifre1", Ct));
+        }
+
+        static async Task<List<(string, int, DateTime?)>> StateAsync(SqliteDatabase database)
+        {
+            await using var db = database.CreateContext();
+            return await db.Users.OrderBy(u => u.Id).Select(u => ValueTuple.Create(u.UserName, u.FailedLoginCount, u.LockoutEnd)).ToListAsync(Ct);
+        }
+
+        var locked = await StateAsync(_db);
+        _db.Clock.Advance(TimeSpan.FromMinutes(5));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInAsync("baska", "Yanlis.Sifre1", Ct));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInAsync("baska", Password, Ct));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInAsync("kimse", Password, Ct));
+
+        Assert.Equal(locked, await StateAsync(_db));
+        Assert.Contains(locked, a => a.Item1 == "baska" && a.Item2 == 0 && a.Item3 != null);
+    }
+
     [Fact]
     public async Task Register_DuplicateValues_AreReported()
     {

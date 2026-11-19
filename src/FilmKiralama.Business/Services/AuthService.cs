@@ -66,22 +66,27 @@ internal sealed class AuthService(
         var name = input.UserName;
         password = input.Password!;
 
-        // The database's clock: a computer whose clock is ahead cannot end a lock early, nor one whose
-        // clock is behind make a lock last longer. It is read before the lookup, for every name, so the
-        // round trip does not make a known name slower to refuse than an unknown one.
+        // Every sign-in that gets this far makes the same calls in the same order: the database's clock,
+        // the lookup, one password check (real or simulated) and one write of the outcome. A refusal always
+        // ends with the same conditional failure write, which counts or matches no row as the database
+        // decides, so the number of round trips does not tell a known name from an unknown one. The
+        // database's clock also means a computer whose clock is wrong can neither end a lock early nor
+        // make it last longer.
         var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
         var account = await users.FindByUserNameAsync(name, cancellationToken).ConfigureAwait(false);
         if (account is null)
         {
             passwordHasher.SimulateVerification(password);
+            await RecordFailureAsync(FailedSignIn.ForUnknown(name), now, cancellationToken).ConfigureAwait(false);
             throw Refused();
         }
 
         if (account.LockoutEnd > now)
         {
-            // Same answer and about the same cost as a wrong password; nothing is written, so the lock
-            // neither grows nor ends early.
+            // Same answer and about the same cost as a wrong password. The failure write matches no row
+            // while the lock is in force, so the lock neither grows nor ends early.
             passwordHasher.SimulateVerification(password);
+            await RecordFailureAsync(FailedSignIn.For(account), now, cancellationToken).ConfigureAwait(false);
             throw Refused();
         }
 
@@ -90,12 +95,7 @@ internal sealed class AuthService(
         {
             // Counted only against the credential just checked, and only while no lock is in force when
             // the failure is written (decided by the database).
-            await users.RecordFailedLoginAsync(
-                FailedSignIn.For(account),
-                LoginPolicy.MaxFailedAttempts,
-                LoginPolicy.LockoutDuration,
-                now,
-                cancellationToken).ConfigureAwait(false);
+            await RecordFailureAsync(FailedSignIn.For(account), now, cancellationToken).ConfigureAwait(false);
             throw Refused();
         }
 
@@ -200,7 +200,7 @@ internal sealed class AuthService(
         if (passwordHasher.Verify(currentPassword, account.PasswordHash, account.PasswordFormat) == PasswordVerificationResult.Failed)
         {
             // Counted like a failed sign-in: an unattended session cannot be used to guess the password.
-            await users.RecordFailedLoginAsync(FailedSignIn.For(account), LoginPolicy.MaxFailedAttempts, LoginPolicy.LockoutDuration, now, cancellationToken).ConfigureAwait(false);
+            await RecordFailureAsync(FailedSignIn.For(account), now, cancellationToken).ConfigureAwait(false);
             audit.Record(AuditEvent.PasswordChangeRefused, role);
             throw new BusinessRuleException(CurrentPasswordWrong);
         }
@@ -216,6 +216,10 @@ internal sealed class AuthService(
         session.Renew(version);
         audit.Record(AuditEvent.PasswordChanged, role);
     }
+
+    /// <summary>The one failure write of every refused sign-in and of a wrong current password.</summary>
+    private Task RecordFailureAsync(FailedSignIn failure, DateTime now, CancellationToken cancellationToken) =>
+        users.RecordFailedLoginAsync(failure, LoginPolicy.MaxFailedAttempts, LoginPolicy.LockoutDuration, now, cancellationToken);
 
     /// <summary>
     /// The one audit code of every refused sign-in, without a role; the answer is

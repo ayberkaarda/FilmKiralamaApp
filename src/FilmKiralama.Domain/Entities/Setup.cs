@@ -58,6 +58,13 @@ public sealed record FailedSignIn(string UserName, string PasswordHash, Password
         ArgumentNullException.ThrowIfNull(account);
         return new(account.UserName, account.PasswordHash, account.PasswordFormat, account.SessionVersion);
     }
+
+    /// <summary>
+    /// A failure for a name no account had when it was looked up. It is written like any other failure,
+    /// so the refusal makes the same round trips, but it can match no row: no stored session version is
+    /// negative (a CHECK constraint), so also an account registered under the name meanwhile is untouched.
+    /// </summary>
+    public static FailedSignIn ForUnknown(string userName) => new(userName, string.Empty, PasswordFormat.Pbkdf2, SessionVersion: -1);
 }
 
 /// <summary>A usable setup key, as a given key is compared with it.</summary>
