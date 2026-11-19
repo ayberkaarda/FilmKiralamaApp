@@ -47,5 +47,10 @@ public sealed record AccountCredentials(
 /// <summary>A usable setup key, as a given key is compared with it.</summary>
 public sealed record StoredSetupKey(int Id, byte[] KeyHash);
 
-/// <summary>An account as the admin's account list shows it; the password never leaves the database.</summary>
-public sealed record UserSummary(int Id, string UserName, string? Email, string? Phone, UserRole Role);
+/// <summary>
+/// An account as the admin's account list shows it; the password never leaves the database.
+/// <see cref="Version"/> is the account's session version when it was read: a change made from a form
+/// that loaded it carries it back, and is refused once another admin has changed the account's role or
+/// password since.
+/// </summary>
+public sealed record UserSummary(int Id, string UserName, string? Email, string? Phone, UserRole Role, int Version);

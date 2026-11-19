@@ -62,6 +62,26 @@ internal static class TestServices
         return new UserSession(userId, account.UserName, account.Role, account.SessionVersion);
     }
 
+    /// <summary>
+    /// Changes account <paramref name="userId"/> as the admin's form does right after loading it: the
+    /// version comes from the account list <paramref name="session"/> reads just before. A session that
+    /// may not read the list sends version 0, so the change itself decides the refusal.
+    /// </summary>
+    public static async Task UpdateLoadedAsync(this IAccountService accounts, UserSession session, int userId, AccountInput input, CancellationToken ct)
+    {
+        int version;
+        try
+        {
+            version = (await accounts.GetAllAsync(session, ct)).SingleOrDefault(u => u.Id == userId)?.Version ?? 0;
+        }
+        catch (AccessDeniedException)
+        {
+            version = 0;
+        }
+
+        await accounts.UpdateAsync(session, userId, version, input, ct);
+    }
+
     /// <summary>Registers a customer through the real service and returns its session.</summary>
     public static async Task<UserSession> RegisterAsync(IServiceProvider provider, string name, int number)
     {

@@ -1,5 +1,6 @@
 using FilmKiralama.Business;
 using FilmKiralama.Business.Services;
+using FilmKiralama.Domain.Entities;
 using FilmKiralama.UI.Infrastructure;
 using FilmKiralama.UI.Tests.Support;
 using static FilmKiralama.UI.Tests.Support.StaThread;
@@ -164,5 +165,29 @@ public sealed class ExclusiveWriteTests
         Assert.Equal("Ücret boş bırakılamaz.", errors.GetError(Find<TextBox>(form, "txtUcret")));
         Assert.Empty(errors.GetError(Find<TextBox>(form, "txtTur")));
         Assert.Equal("Lütfen gerekli alanları doldurun.", form.StatusBar.Text);
+    });
+
+    /// <summary>
+    /// An account change carries the version the form loaded. When another admin changed the account
+    /// meanwhile the change is refused as stale and the form shows the account as it is now, so the next
+    /// save starts from the current role instead of the one the old form showed.
+    /// </summary>
+    [Fact]
+    public void UpdateAccount_StaleForm_LoadsTheAccountAgain() => Run(() =>
+    {
+        var accounts = new ControlledAccountService();
+        using var form = new KullaniciYonetimPanel(accounts, Sessions.Admin) { Prompts = new RecordingPrompts() };
+        Assert.True(form.LoadUsersAsync().IsCompletedSuccessfully);
+        form.SelectUser(new UserSummary(2, "ornek", "ornek@example.com", null, UserRole.Admin, 4));
+        accounts.Accounts[1] = new UserSummary(2, "ornek", "ornek@example.com", null, UserRole.User, 5);
+        accounts.UpdateFailure = BusinessRuleException.Stale(AccountService.ChangedElsewhere);
+
+        Assert.True(form.UpdateAsync().IsCompletedSuccessfully);
+
+        Assert.Equal((2, 4), (accounts.Updates[0].UserId, accounts.Updates[0].Version));
+        Assert.Equal(UserRole.Admin, accounts.Updates[0].Input.Role);
+        Assert.Equal(5, form.Selected?.Version);
+        Assert.Equal(new RoleChoice(UserRole.User), Find<ComboBox>(form, "cmbRol").SelectedItem);
+        Assert.Equal(AccountService.ChangedElsewhere, form.StatusBar.Text);
     });
 }

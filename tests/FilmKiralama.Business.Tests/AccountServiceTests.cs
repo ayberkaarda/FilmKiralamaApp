@@ -24,7 +24,7 @@ public sealed class AccountServiceTests
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => service.GetAllAsync(Sessions.User, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => service.AddAsync(Sessions.User, Valid, Ct));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => service.UpdateAsync(Sessions.User, 2, Valid, Ct));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => service.UpdateAsync(Sessions.User, 2, 0, Valid, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => service.DeleteAsync(Sessions.User, 5, Ct));
 
         _users.VerifyNoOtherCalls();
@@ -42,10 +42,10 @@ public sealed class AccountServiceTests
     public async Task Update_WithoutPassword_KeepsTheStoredOne()
     {
         _users.Setup(u => u.FindTakenAsync("yeni", "yeni@example.com", "5550000009", 4, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
-        _users.Setup(u => u.UpdateAsync(Sessions.Admin.Actor, new AccountUpdate(4, "yeni", "yeni@example.com", "5550000009", UserRole.Admin, null), It.IsAny<CancellationToken>()))
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.Actor, new AccountUpdate(4, 0, "yeni", "yeni@example.com", "5550000009", UserRole.Admin, null), It.IsAny<CancellationToken>()))
             .ReturnsAsync(AccountUpdateOutcome.Updated);
 
-        await Service().UpdateAsync(Sessions.Admin, 4, Valid with { Password = "", Role = UserRole.Admin }, Ct);
+        await Service().UpdateAsync(Sessions.Admin, 4, 0, Valid with { Password = "", Role = UserRole.Admin }, Ct);
 
         Assert.Equal(["account.changed admin"], _audit.Entries);
     }
@@ -59,7 +59,7 @@ public sealed class AccountServiceTests
             .Callback<Actor, AccountUpdate, CancellationToken>((_, update, _) => hash = update.NewPasswordHash)
             .ReturnsAsync(AccountUpdateOutcome.Updated);
 
-        await Service().UpdateAsync(Sessions.Admin, 4, Valid, Ct);
+        await Service().UpdateAsync(Sessions.Admin, 4, 0, Valid, Ct);
 
         Assert.Equal(PasswordVerificationResult.Success, _hasher.Verify("Gizli.Sifre1", hash!, Domain.Entities.PasswordFormat.Pbkdf2));
     }
@@ -70,9 +70,29 @@ public sealed class AccountServiceTests
         _users.Setup(u => u.FindTakenAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), 1, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
         _users.Setup(u => u.UpdateAsync(Sessions.Admin.Actor, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>())).ReturnsAsync(AccountUpdateOutcome.LastAdmin);
 
-        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 1, Valid with { Password = null }, Ct));
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 1, 0, Valid with { Password = null }, Ct));
 
         Assert.Equal(AccountService.LastAdmin, error.Message);
+    }
+
+    /// <summary>
+    /// The version the form loaded goes to the repository; when the account changed or disappeared since,
+    /// the refusal is marked stale so the form loads it again.
+    /// </summary>
+    [Theory]
+    [InlineData(AccountUpdateOutcome.ChangedElsewhere, AccountService.ChangedElsewhere)]
+    [InlineData(AccountUpdateOutcome.NotFound, AccountService.NotFound)]
+    public async Task Update_ChangedOrDeletedSinceLoaded_IsRefusedAsStale(AccountUpdateOutcome outcome, string message)
+    {
+        _users.Setup(u => u.FindTakenAsync("yeni", "yeni@example.com", "5550000009", 4, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.Actor, It.Is<AccountUpdate>(a => a.UserId == 4 && a.ExpectedVersion == 3), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(outcome);
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 4, 3, Valid with { Role = UserRole.Admin }, Ct));
+
+        Assert.Equal(message, error.Message);
+        Assert.True(error.IsStale);
+        Assert.Empty(_audit.Entries);
     }
 
     [Theory]
@@ -98,7 +118,7 @@ public sealed class AccountServiceTests
             .Callback<Actor, AccountUpdate, CancellationToken>((_, update, _) => sent = update)
             .ReturnsAsync(AccountUpdateOutcome.Updated);
 
-        await Service().UpdateAsync(Sessions.Admin, 6, new AccountInput("eski", "Yeni.Sifre12", " ", "", UserRole.User), Ct);
+        await Service().UpdateAsync(Sessions.Admin, 6, 0, new AccountInput("eski", "Yeni.Sifre12", " ", "", UserRole.User), Ct);
 
         Assert.NotNull(sent);
         Assert.Null(sent.Email);
@@ -118,9 +138,9 @@ public sealed class AccountServiceTests
         _users.Setup(u => u.UpdateAsync(Sessions.Admin.Actor, It.Is<AccountUpdate>(a => a.UserName == legacyName), It.IsAny<CancellationToken>()))
             .ReturnsAsync(AccountUpdateOutcome.Updated);
 
-        await Service().UpdateAsync(Sessions.Admin, 6, new AccountInput(legacyName, "Yeni.Sifre12", null, null, UserRole.User), Ct);
+        await Service().UpdateAsync(Sessions.Admin, 6, 0, new AccountInput(legacyName, "Yeni.Sifre12", null, null, UserRole.User), Ct);
         var renamed = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => Service().UpdateAsync(Sessions.Admin, 6, new AccountInput("baska bosluklu ad", null, null, null, UserRole.User), Ct));
+            () => Service().UpdateAsync(Sessions.Admin, 6, 0, new AccountInput("baska bosluklu ad", null, null, null, UserRole.User), Ct));
 
         Assert.Equal(AccountRules.UserNameInvalid, renamed.Message);
     }
@@ -128,8 +148,8 @@ public sealed class AccountServiceTests
     [Fact]
     public async Task Update_ContactValuesThatAreGiven_AreStillChecked()
     {
-        var email = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 6, Valid with { Email = "eposta-degil" }, Ct));
-        var phone = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 6, Valid with { Phone = "12" }, Ct));
+        var email = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 6, 0, Valid with { Email = "eposta-degil" }, Ct));
+        var phone = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 6, 0, Valid with { Phone = "12" }, Ct));
         var addition = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().AddAsync(Sessions.Admin, Valid with { Email = null }, Ct));
 
         Assert.Equal(AccountRules.EmailInvalid, email.Message);
@@ -145,7 +165,7 @@ public sealed class AccountServiceTests
         _users.Setup(u => u.UpdateAsync(Sessions.Admin.Actor, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
         _users.Setup(u => u.DeleteAsync(Sessions.Admin.Actor, 5, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
 
-        var update = await Assert.ThrowsAsync<AccessDeniedException>(() => Service().UpdateAsync(Sessions.Admin, 1, Valid with { Role = UserRole.Admin }, Ct));
+        var update = await Assert.ThrowsAsync<AccessDeniedException>(() => Service().UpdateAsync(Sessions.Admin, 1, 0, Valid with { Role = UserRole.Admin }, Ct));
         var delete = await Assert.ThrowsAsync<AccessDeniedException>(() => Service().DeleteAsync(Sessions.Admin, 5, Ct));
 
         Assert.Equal(AccessDeniedException.SessionRevokedMessage, update.Message);

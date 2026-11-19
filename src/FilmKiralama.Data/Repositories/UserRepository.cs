@@ -40,7 +40,7 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         return await db.Users
             .AsNoTracking()
             .OrderBy(u => u.Id)
-            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role))
+            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role, u.SessionVersion))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -127,15 +127,20 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
             await Actors.RequireAsync(db, actor, admin: true, cancellationToken).ConfigureAwait(false);
 
             var id = update.UserId;
+            var expectedVersion = update.ExpectedVersion;
             var role = update.Role;
             var keepsAdmin = role == UserRole.Admin;
             var hash = update.NewPasswordHash;
             var newPassword = hash is not null;
 
-            // The WHERE clause is the final decision: an admin keeps the role, or another admin exists.
-            // The admin role lock above keeps a concurrent demotion from passing the same check.
+            // The WHERE clause is the final decision: the account still has the session version the form
+            // loaded (no role or password change since, so a stale form cannot give back a role another
+            // admin just took away), and an admin keeps the role or another admin exists. The admin role
+            // lock above keeps a concurrent demotion from passing the same check.
             var updated = await db.Users
-                .Where(u => u.Id == id && (keepsAdmin || u.Role != UserRole.Admin || db.Users.Any(o => o.Id != id && o.Role == UserRole.Admin)))
+                .Where(u => u.Id == id
+                    && u.SessionVersion == expectedVersion
+                    && (keepsAdmin || u.Role != UserRole.Admin || db.Users.Any(o => o.Id != id && o.Role == UserRole.Admin)))
                 .ExecuteUpdateAsync(
                     s =>
                     {
@@ -165,8 +170,17 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
                 return AccountUpdateOutcome.Updated;
             }
 
-            var exists = await db.Users.AnyAsync(u => u.Id == id, cancellationToken).ConfigureAwait(false);
-            return exists ? AccountUpdateOutcome.LastAdmin : AccountUpdateOutcome.NotFound;
+            var version = await db.Users
+                .Where(u => u.Id == id)
+                .Select(u => (int?)u.SessionVersion)
+                .SingleOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
+            return version switch
+            {
+                null => AccountUpdateOutcome.NotFound,
+                _ when version != expectedVersion => AccountUpdateOutcome.ChangedElsewhere,
+                _ => AccountUpdateOutcome.LastAdmin,
+            };
         }
         catch (DbUpdateException ex)
         {

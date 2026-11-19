@@ -30,6 +30,15 @@ public sealed class BusinessRuleException : Exception
 
     /// <summary>The invalid fields of the input and why; empty for other rules.</summary>
     public IReadOnlyDictionary<string, string> FieldErrors { get; } = new Dictionary<string, string>();
+
+    /// <summary>
+    /// Whether the record changed or disappeared since the form loaded it. Only then does a form load the
+    /// record again; any other refusal leaves what the user typed in place so it can be corrected.
+    /// </summary>
+    public bool IsStale { get; private init; }
+
+    /// <summary>A refusal because the record changed or disappeared since the form loaded it (see <see cref="IsStale"/>).</summary>
+    public static BusinessRuleException Stale(string message) => new(message) { IsStale = true };
 }
 
 /// <summary>

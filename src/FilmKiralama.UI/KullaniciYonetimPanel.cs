@@ -1,4 +1,5 @@
 using System.Globalization;
+using FilmKiralama.Business;
 using FilmKiralama.Business.Security;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Business.Validation;
@@ -68,7 +69,10 @@ namespace FilmKiralama.UI
             UpdateButtons();
         }
 
-        internal int? SelectedUserId { get; private set; }
+        internal int? SelectedUserId => Selected?.Id;
+
+        /// <summary>The account in the form as it was loaded; its version goes back with a change.</summary>
+        internal UserSummary? Selected { get; private set; }
 
         internal IReadOnlyList<UserSummary> ShownUsers { get; private set; } = [];
 
@@ -111,7 +115,7 @@ namespace FilmKiralama.UI
         {
             ArgumentNullException.ThrowIfNull(user);
 
-            SelectedUserId = user.Id;
+            Selected = user;
             txtID.Text = user.Id.ToString(CultureInfo.InvariantCulture);
             txtKullaniciAdi.Text = user.UserName;
             txtSifre.Clear();
@@ -132,7 +136,7 @@ namespace FilmKiralama.UI
 
         internal Task<bool> UpdateAsync()
         {
-            if (SelectedUserId is not { } id)
+            if (Selected is not { } loaded)
             {
                 Prompts.Warn("Lütfen güncellemek için bir kullanıcı seçin.");
                 return Task.FromResult(false);
@@ -140,7 +144,27 @@ namespace FilmKiralama.UI
 
             return WriteAsync(async () =>
             {
-                await _accounts.UpdateAsync(_session, id, ReadInput());
+                try
+                {
+                    await _accounts.UpdateAsync(_session, loaded.Id, loaded.Version, ReadInput());
+                }
+                catch (BusinessRuleException ex) when (ex.IsStale)
+                {
+                    // Changed or deleted meanwhile: the account is loaded again as it is now, so the next
+                    // save starts from the current role instead of the one this form showed.
+                    await LoadUsersAsync();
+                    if (ShownUsers.FirstOrDefault(u => u.Id == loaded.Id) is { } current)
+                    {
+                        SelectUser(current);
+                    }
+                    else
+                    {
+                        ClearForm();
+                    }
+
+                    throw;
+                }
+
                 Prompts.Inform("Kullanıcı başarıyla güncellendi.");
                 ClearForm();
                 await LoadUsersAsync();
@@ -203,7 +227,7 @@ namespace FilmKiralama.UI
 
         private void ClearForm()
         {
-            SelectedUserId = null;
+            Selected = null;
             dataGridView1.ClearSelection();
             txtID.Clear();
             txtKullaniciAdi.Clear();

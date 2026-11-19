@@ -29,7 +29,9 @@ public interface IUserRepository
     /// Changes an account's name, contact data and role and, when <see cref="AccountUpdate.NewPasswordHash"/>
     /// is set, its password. A new password, or a role different from the stored one, raises the account's
     /// session version in the same statement, which ends every session issued before. The last admin
-    /// cannot lose the admin role: the check and the write are one
+    /// cannot lose the admin role, and an account whose session version is no longer
+    /// <see cref="AccountUpdate.ExpectedVersion"/> (another admin changed its role or password since the
+    /// form loaded it) is not changed: the checks and the write are one
     /// conditional UPDATE, so two concurrent demotions cannot both succeed. The change is made by the
     /// admin <paramref name="actor"/>, whose stored role is checked first under the same lock, so a
     /// demoted admin can neither change accounts nor take the role back.
@@ -109,8 +111,11 @@ public enum AccountFields
     Phone = 4,
 }
 
-/// <summary>An admin's change of an account.</summary>
-public sealed record AccountUpdate(int UserId, string UserName, string? Email, string? Phone, UserRole Role, string? NewPasswordHash);
+/// <summary>
+/// An admin's change of an account, made from a form that loaded the account at session version
+/// <see cref="ExpectedVersion"/>.
+/// </summary>
+public sealed record AccountUpdate(int UserId, int ExpectedVersion, string UserName, string? Email, string? Phone, UserRole Role, string? NewPasswordHash);
 
 public enum AccountUpdateOutcome
 {
@@ -119,6 +124,11 @@ public enum AccountUpdateOutcome
 
     /// <summary>The account is the only admin and would lose the role; nothing was written.</summary>
     LastAdmin = 2,
+
+    /// <summary>
+    /// Another admin changed the account's role or password since the form loaded it; nothing was written.
+    /// </summary>
+    ChangedElsewhere = 3,
 }
 
 public enum AccountDeleteOutcome

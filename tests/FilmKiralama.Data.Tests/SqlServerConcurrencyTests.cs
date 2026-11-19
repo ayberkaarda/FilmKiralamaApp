@@ -147,12 +147,12 @@ public sealed class SqlServerConcurrencyTests
             var y = await accounts.AddAsync(await CurrentSessionAsync(a, SeedAdminId), Input("yadmin" + round, 300 + round, UserRole.Admin), Ct);
 
             // The seed admin steps down first, so x and y are the only admins.
-            await accounts.UpdateAsync(Admin(x), SeedAdminId, new AccountInput("yonetici", null, "yonetici@example.com", "5550000001", UserRole.User), Ct);
+            await accounts.UpdateLoadedAsync(Admin(x), SeedAdminId, new AccountInput("yonetici", null, "yonetici@example.com", "5550000001", UserRole.User), Ct);
 
             var results = await RaceAsync(
             [
-                () => a.GetRequiredService<IAccountService>().UpdateAsync(Admin(x), y, Input("yadmin" + round, 300 + round, UserRole.User), Ct),
-                () => b.GetRequiredService<IAccountService>().UpdateAsync(Admin(y), x, Input("xadmin" + round, 200 + round, UserRole.User), Ct),
+                () => a.GetRequiredService<IAccountService>().UpdateLoadedAsync(Admin(x), y, Input("yadmin" + round, 300 + round, UserRole.User), Ct),
+                () => b.GetRequiredService<IAccountService>().UpdateLoadedAsync(Admin(y), x, Input("xadmin" + round, 200 + round, UserRole.User), Ct),
             ]);
 
             // The second one to get the admin role lock has lost the role by then, so its open session
@@ -163,8 +163,8 @@ public sealed class SqlServerConcurrencyTests
 
             // Hand the role back to the seed admin for the next round.
             var remaining = await database.ScalarAsync("SELECT KullaniciID FROM dbo.Kullanicilar WHERE Rol = N'Admin'", Ct);
-            await accounts.UpdateAsync(await CurrentSessionAsync(a, remaining), SeedAdminId, new AccountInput("yonetici", null, "yonetici@example.com", "5550000001", UserRole.Admin), Ct);
-            await accounts.UpdateAsync(await CurrentSessionAsync(a, SeedAdminId), remaining, remaining == x ? Input("xadmin" + round, 200 + round, UserRole.User) : Input("yadmin" + round, 300 + round, UserRole.User), Ct);
+            await accounts.UpdateLoadedAsync(await CurrentSessionAsync(a, remaining), SeedAdminId, new AccountInput("yonetici", null, "yonetici@example.com", "5550000001", UserRole.Admin), Ct);
+            await accounts.UpdateLoadedAsync(await CurrentSessionAsync(a, SeedAdminId), remaining, remaining == x ? Input("xadmin" + round, 200 + round, UserRole.User) : Input("yadmin" + round, 300 + round, UserRole.User), Ct);
         }
     }
 
@@ -213,22 +213,22 @@ public sealed class SqlServerConcurrencyTests
         var customer = await RegisterAsync(a, "giden", 2);
         var rental = await RentAsync(a, User(SeedUserId), ThreeCopiesFilmId);
 
-        await accounts.UpdateAsync(Admin(SeedAdminId), secondId, second with { Password = null, Role = UserRole.User }, Ct);
+        await accounts.UpdateLoadedAsync(Admin(SeedAdminId), secondId, second with { Password = null, Role = UserRole.User }, Ct);
         await accounts.DeleteAsync(Admin(SeedAdminId), customer.UserId, Ct);
-        await accounts.UpdateAsync(Admin(SeedAdminId), thirdId, third with { Password = "Yeni.Sifre123" }, Ct);
+        await accounts.UpdateLoadedAsync(Admin(SeedAdminId), thirdId, third with { Password = "Yeni.Sifre123" }, Ct);
 
         var films = b.GetRequiredService<IFilmService>();
         var rentals = b.GetRequiredService<IRentalService>();
         List<Func<Task>> refused =
         [
-            () => b.GetRequiredService<IAccountService>().UpdateAsync(demoted, secondId, second with { Password = null }, Ct),
+            () => b.GetRequiredService<IAccountService>().UpdateLoadedAsync(demoted, secondId, second with { Password = null }, Ct),
             () => b.GetRequiredService<IAccountService>().GetAllAsync(demoted, Ct),
             () => films.AddAsync(demoted, new FilmInput("Yeni", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 1, true), Ct),
             () => films.DeleteAsync(demoted, ThreeCopiesFilmId, Ct),
             () => rentals.ReturnAsync(demoted, rental.RentalId, Ct),
             async () => await rentals.RentAsync(customer, await rentals.QuoteAsync(ThreeCopiesFilmId, 25m, 1, Ct), Ct),
             () => films.AddAsync(reset, new FilmInput("Yeni", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 1, true), Ct),
-            () => b.GetRequiredService<IAccountService>().UpdateAsync(reset, thirdId, third, Ct),
+            () => b.GetRequiredService<IAccountService>().UpdateLoadedAsync(reset, thirdId, third, Ct),
         ];
         foreach (var operation in refused)
         {

@@ -149,7 +149,7 @@ public sealed class LegacyUpgradeTests
 
         // Rows the upgrade kept with NULLs can be saved from the admin forms as they are: the password of
         // an account without e-mail and phone is reset, a film without a description is listed again.
-        await provider.GetRequiredService<IAccountService>().UpdateAsync(admin, 6, new AccountInput("eski", "Yeni.Sifre12", "", "", UserRole.User), Ct);
+        await provider.GetRequiredService<IAccountService>().UpdateLoadedAsync(admin, 6, new AccountInput("eski", "Yeni.Sifre12", "", "", UserRole.User), Ct);
         Assert.Equal(6, (await auth.SignInAsync("eski", "Yeni.Sifre12", Ct)).UserId);
         Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE KullaniciID = 6 AND Eposta IS NULL AND Telefon IS NULL", Ct));
         var filmService = provider.GetRequiredService<IFilmService>();
