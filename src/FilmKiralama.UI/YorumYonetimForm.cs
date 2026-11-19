@@ -60,7 +60,8 @@ namespace FilmKiralama.UI
                 }
             };
 
-            _pager = new Pager(this, new Point(16, 560));
+            _pager = new Pager { Location = new Point(16, 560) };
+            Controls.Add(_pager);
             _pager.PageRequested += async (_, page) => await this.RunAsync(() => LoadAsync(page));
 
             _hide = new Button { Name = "btnGizle", Text = "Gizle", Location = new Point(764, 590), Size = new Size(150, 36), Enabled = false };

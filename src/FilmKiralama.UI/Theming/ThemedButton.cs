@@ -80,13 +80,57 @@ internal sealed class ThemedButton : Button, IThemeAware
         set
         {
             _glyph = value ?? string.Empty;
-
-            // The glyph takes room on the left, so the automatic size keeps the whole text.
-            Padding = new Padding(DrawsGlyph ? Spacing.M + GlyphRoom : Spacing.M, 0, Spacing.M, 0);
+            UpdatePadding();
         }
     }
 
+    /// <summary>Draws the glyph after the text instead of before it, for a "next" button.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool GlyphAfterText
+    {
+        get => _glyphAfterText;
+        set
+        {
+            _glyphAfterText = value;
+            UpdatePadding();
+        }
+    }
+
+    /// <summary>
+    /// Shows only the glyph in a square button, for a small repeated action beside a primary one. The text stays
+    /// the button's accessible name; where the glyph is not drawn (high contrast, no icon font) the text is shown.
+    /// </summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool IconOnly
+    {
+        get => _iconOnly;
+        set
+        {
+            _iconOnly = value;
+            UpdatePadding();
+        }
+    }
+
+    /// <summary>Whether the button shows its glyph alone.</summary>
+    internal bool ShowsIconOnly => _iconOnly && DrawsGlyph;
+
+    private bool _glyphAfterText;
+    private bool _iconOnly;
+
     private bool DrawsGlyph => !Theme.Current.IsHighContrast && _glyph.Length > 0 && Theme.Fonts.Glyph(GlyphPoints) is not null;
+
+    /// <summary>The glyph takes room beside the text, so the automatic size keeps the whole text.</summary>
+    private void UpdatePadding()
+    {
+        var room = DrawsGlyph ? Spacing.M + GlyphRoom : Spacing.M;
+        Padding = _glyphAfterText ? new Padding(Spacing.M, 0, room, 0) : new Padding(room, 0, Spacing.M, 0);
+        MinimumSize = new Size(Kind == ButtonKind.Subtle || ShowsIconOnly ? Sizes.ControlHeight : Sizes.ButtonMinWidth, Sizes.ControlHeight);
+    }
+
+    public override Size GetPreferredSize(Size proposedSize) =>
+        ShowsIconOnly
+            ? new Size(Math.Max(Theme.Px(this, Sizes.ControlHeight), Height), Math.Max(Theme.Px(this, Sizes.ControlHeight), Height))
+            : base.GetPreferredSize(proposedSize);
 
     protected override void OnMouseEnter(EventArgs e)
     {
@@ -166,6 +210,18 @@ internal sealed class ThemedButton : Button, IThemeAware
             return;
         }
 
+        var glyphColor = !Enabled ? p.TextDisabled : Kind switch
+        {
+            ButtonKind.Primary => text,
+            ButtonKind.Danger => p.Danger,
+            _ => p.AccentText,
+        };
+        if (ShowsIconOnly)
+        {
+            Painting.DrawGlyph(g, Glyph, Theme.Fonts.Glyph(GlyphPoints + 1F), ClientRectangle, glyphColor);
+            return;
+        }
+
         // Glyph and text are centered together as one group, or start at the left padding for a left aligned button.
         var glyphWidth = Theme.Px(this, 16);
         var gap = Theme.Px(this, 6);
@@ -173,14 +229,9 @@ internal sealed class ThemedButton : Button, IThemeAware
         var left = alignLeft
             ? Theme.Px(this, Spacing.M)
             : Math.Max(Theme.Px(this, Spacing.S), (Width - (glyphWidth + gap + textWidth)) / 2);
-        var glyphColor = !Enabled ? p.TextDisabled : Kind switch
-        {
-            ButtonKind.Primary => text,
-            ButtonKind.Danger => p.Danger,
-            _ => p.AccentText,
-        };
-        Painting.DrawGlyph(g, Glyph, Theme.Fonts.Glyph(GlyphPoints), new Rectangle(left, 0, glyphWidth, Height), glyphColor);
-        TextRenderer.DrawText(g, Text, Font, new Rectangle(left + glyphWidth + gap, 0, Math.Max(0, Width - left - glyphWidth - gap), Height), text, flags);
+        var (glyphLeft, textLeft) = _glyphAfterText ? (left + textWidth + gap, left) : (left, left + glyphWidth + gap);
+        Painting.DrawGlyph(g, Glyph, Theme.Fonts.Glyph(GlyphPoints), new Rectangle(glyphLeft, 0, glyphWidth, Height), glyphColor);
+        TextRenderer.DrawText(g, Text, Font, new Rectangle(textLeft, 0, Math.Max(0, Width - textLeft - (_glyphAfterText ? glyphWidth + gap : 0)), Height), text, flags);
     }
 
     private (Color Fill, Color? Border, Color Text) Colors(ThemePalette p)

@@ -98,7 +98,8 @@ internal static class Glyphs
     public const string Key = "";
     public const string Admin = "";
     public const string Add = "";
-    public const string Edit = "";
+    public const string Remove = "";
+    public const string Edit ="";
     public const string Save = "";
     public const string Delete = "";
     public const string Cancel = "";

@@ -156,7 +156,16 @@ internal sealed class GlyphBadge : Control, IThemeAware
 /// </summary>
 internal sealed class HeadingLabel : Label
 {
-    private const TextFormatFlags Flags = TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.TextBoxControl;
+    // Without the padding GDI adds on both sides, a large heading starts on the same line as the text below it.
+    private const TextFormatFlags Flags = TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.TextBoxControl | TextFormatFlags.NoPadding;
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+
+        var area = new Rectangle(Padding.Left, Padding.Top, Math.Max(0, Width - Padding.Horizontal), Math.Max(0, Height - Padding.Vertical));
+        TextRenderer.DrawText(e.Graphics, Text, Font, area, Enabled ? ForeColor : SystemColors.GrayText, Flags);
+    }
 
     public HeadingLabel()
     {

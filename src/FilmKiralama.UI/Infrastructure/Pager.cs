@@ -1,41 +1,47 @@
 using System.Globalization;
+using FilmKiralama.UI.Theming;
 
 namespace FilmKiralama.UI.Infrastructure;
 
 /// <summary>
-/// "Önceki" and "Sonraki" buttons with "Sayfa 2 / 5 (37 film)" between them. Showing a page is not a user
+/// "Önceki" and "Sonraki" with "Sayfa 2 / 5 (37 film)" between them, in one row. Showing a page is not a user
 /// choice and raises nothing; only a click asks for another page.
 /// </summary>
-internal sealed class Pager : Panel
+internal sealed class Pager : TableLayoutPanel
 {
-    private readonly Button _previous;
-    private readonly Button _next;
-    private readonly Label _label;
+    private readonly ThemedButton _previous = FormLayout.Button("btnOncekiSayfa", "Önceki", ButtonKind.Secondary, Glyphs.ChevronLeft);
+    private readonly ThemedButton _next = FormLayout.Button("btnSonrakiSayfa", "Sonraki", ButtonKind.Secondary, Glyphs.ChevronRight);
+    private readonly Label _label = FormLayout.Text("lblSayfa");
     private int _page = 1;
     private int _pageCount = 1;
 
-    public Pager(Control parent, Point location)
+    public Pager()
     {
-        ArgumentNullException.ThrowIfNull(parent);
-
         Name = "pnlSayfa";
-        Location = location;
-        Size = new Size(500, 32);
-        BackColor = Color.Transparent;
-        _previous = new Button { Name = "btnOncekiSayfa", Text = "◀ Önceki", Location = new Point(0, 0), Size = new Size(110, 32), Enabled = false };
-        _label = new Label
+        AutoSize = true;
+        AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        Margin = Padding.Empty;
+        ColumnCount = 3;
+        RowCount = 1;
+        RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        for (var i = 0; i < 3; i++)
         {
-            Name = "lblSayfa",
-            Location = new Point(120, 4),
-            Size = new Size(260, 24),
-            TextAlign = ContentAlignment.MiddleCenter,
-            BackColor = Color.Transparent,
-        };
-        _next = new Button { Name = "btnSonrakiSayfa", Text = "Sonraki ▶", Location = new Point(390, 0), Size = new Size(110, 32), Enabled = false };
+            ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        }
+
+        _next.GlyphAfterText = true;
+        _previous.Enabled = false;
+        _next.Enabled = false;
+        _previous.Margin = new Padding(0, 0, Spacing.S, 0);
+        _next.Margin = new Padding(Spacing.S, 0, 0, 0);
+        _label.ForeColor = Theme.Current.TextSecondary;
+        _label.Anchor = AnchorStyles.None;
+        _label.Margin = new Padding(Spacing.S, 0, Spacing.S, 0);
+        Controls.Add(_previous, 0, 0);
+        Controls.Add(_label, 1, 0);
+        Controls.Add(_next, 2, 0);
         _previous.Click += (_, _) => PageRequested?.Invoke(this, _page - 1);
         _next.Click += (_, _) => PageRequested?.Invoke(this, _page + 1);
-        Controls.AddRange([_previous, _label, _next]);
-        parent.Controls.Add(this);
     }
 
     /// <summary>Raised with the page number when the user asks for the previous or the next page.</summary>

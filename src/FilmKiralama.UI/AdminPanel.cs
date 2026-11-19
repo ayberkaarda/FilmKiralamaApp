@@ -101,10 +101,11 @@ namespace FilmKiralama.UI
             Controls.Add(reports);
 
             // The search row above the film grid and the pages below it.
-            _search = new CatalogSearchBar(new Point(dataGridView1.Left, 84), Color.White, availableOnly: false);
+            _search = new CatalogSearchBar(availableOnly: false) { Dock = DockStyle.None, Location = new Point(dataGridView1.Left, 84), Width = 1000 };
             Controls.Add(_search);
             dataGridView1.SetBounds(dataGridView1.Left, 138, dataGridView1.Width, 470);
-            _pager = new Pager(this, new Point(dataGridView1.Left, 616));
+            _pager = new Pager { Location = new Point(dataGridView1.Left, 616) };
+            Controls.Add(_pager);
             _search.Changed += async (_, _) => await this.RunAsync(() => LoadFilmsAsync(1));
             _pager.PageRequested += async (_, page) => await this.RunAsync(() => LoadFilmsAsync(page));
         }
