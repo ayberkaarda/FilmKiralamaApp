@@ -41,6 +41,8 @@ internal static class SchemaLimits
     /// <summary>Values of <see cref="Domain.Entities.PasswordFormat"/>: 0 PBKDF2 hash, 1 legacy plain text.</summary>
     public const string PasswordFormatCheck = "[SifreBicimi] IN (0, 1)";
 
+    public const string SessionVersionCheck = "[OturumSurumu] >= 0";
+
     public const string DailyPriceCheck = "[GunlukUcret] > 0";
 
     /// <summary>The shelf can neither go negative nor hold more copies than the shop owns.</summary>

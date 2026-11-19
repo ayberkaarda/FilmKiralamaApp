@@ -31,6 +31,13 @@ public sealed class User
 
     /// <summary>UTC time until which sign-in is refused, or <see langword="null"/>.</summary>
     public DateTime? LockoutEnd { get; set; }
+
+    /// <summary>
+    /// Raised by every change that has to end the account's open sessions: a new password (its own change
+    /// or one set by an admin) and a new role. A session carries the version it was issued with, and every
+    /// operation compares it with this value inside its own transaction.
+    /// </summary>
+    public int SessionVersion { get; set; }
 }
 
 /// <summary>What an account may do (column Rol, stored as "Kullanici" or "Admin").</summary>
