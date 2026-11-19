@@ -38,7 +38,8 @@ internal static class ExportFileWriter
 
         var target = Path.GetFullPath(path);
         var folder = Path.GetDirectoryName(target) ?? throw new ArgumentException("The path has no folder.", nameof(path));
-        var temporary = Path.Combine(folder, "." + Path.GetFileName(target) + "." + Guid.NewGuid().ToString("N") + ".tmp");
+        // A short name of its own, so a long target name does not make the temporary path too long.
+        var temporary = Path.Combine(folder, "." + Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
             var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous);

@@ -12,6 +12,8 @@ namespace FilmKiralama.UI
     /// </summary>
     public sealed class RaporlarForm : Form
     {
+        internal const string SaveFailed = "Dosya kaydedilemedi; dosyanın başka bir programda açık olmadığından ve klasöre yazma izniniz olduğundan emin olun.";
+
         private const string CsvFilter = "CSV dosyası (*.csv)|*.csv";
 
         private readonly IReportService _reports;
@@ -164,7 +166,15 @@ namespace FilmKiralama.UI
                         return;
                     }
 
-                    await ExportFileWriter.WriteAsync(path, file.Content);
+                    try
+                    {
+                        await ExportFileWriter.WriteAsync(path, file.Content);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        Prompts.Warn(SaveFailed);
+                        return;
+                    }
 
                     // Recorded only once the file is on the disk.
                     _reports.RecordExport(_session);

@@ -75,6 +75,28 @@ public sealed class ReportUiTests : IDisposable
         Assert.Equal(0, reports.RecordedExports);
     });
 
+    /// <summary>
+    /// A file that cannot be written (a missing folder, a file open in another program) gets its own
+    /// message instead of the general error, and no export is recorded.
+    /// </summary>
+    [Fact]
+    public void Csv_FileThatCannotBeWritten_SaysSoAndRecordsNothing() => Run(() =>
+    {
+        var reports = new ControlledReportService();
+        var prompts = new RecordingPrompts();
+        using var form = new RaporlarForm(reports, Sessions.Admin, Clock) { Prompts = prompts, SavePrompt = new FixedSavePrompt(Path.Combine(_directory, "yok", "rapor.csv")) };
+        _ = form.LoadAsync();
+        reports.MostRentedRequests[0].Answer.SetResult([]);
+
+        var export = form.ExportCsvAsync();
+        Assert.True(SpinUntil(() => export.IsCompleted));
+
+        Assert.True(export.Result);
+        Assert.Equal([RaporlarForm.SaveFailed], prompts.Messages);
+        Assert.Equal(0, reports.RecordedExports);
+        Assert.Empty(Directory.GetFiles(_directory, "*", SearchOption.AllDirectories));
+    });
+
     /// <summary>Two loads answered out of order show the later one; the overdue report has no period.</summary>
     [Fact]
     public void Reports_LatestLoadWinsAndOverdueHasNoPeriod() => Run(() =>
