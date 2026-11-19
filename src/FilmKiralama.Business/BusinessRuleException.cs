@@ -50,11 +50,11 @@ public sealed class AccessDeniedException : Exception
     internal const string DefaultMessage = "Bu işlem için yetkiniz yok.";
 
     /// <summary>
-    /// The one answer when the signed-in account was deleted or lost the role an operation needs after
-    /// the sign-in; the session has to end.
+    /// The one answer when, after the sign-in, the signed-in account was deleted, got a new password or a
+    /// new role, or lost the role an operation needs; the session has to end.
     /// </summary>
     internal const string SessionRevokedMessage =
-        "Hesabınızın yetkileri değişti veya hesabınız artık bulunmuyor. Lütfen oturumu kapatıp yeniden giriş yapın.";
+        "Hesabınızın şifresi ya da yetkileri değişti veya hesabınız artık bulunmuyor. Lütfen oturumu kapatıp yeniden giriş yapın.";
 
     public AccessDeniedException()
         : base(DefaultMessage)

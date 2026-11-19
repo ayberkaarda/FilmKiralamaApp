@@ -6,9 +6,10 @@ namespace FilmKiralama.Business.Services;
 /// <summary>Role checks and the local calendar day shared by the services.</summary>
 /// <remarks>
 /// The role a session signed in with only decides what it may ask for. Whether the account still
-/// exists and still has that role is decided by the repositories against the stored account, inside
-/// each operation (<see cref="ActorRevokedException"/>), and <see cref="AsActorAsync{T}"/> turns a
-/// refusal there into the one answer that asks the user to sign in again.
+/// exists, still has the session's version (no new password or role since the sign-in) and still has
+/// that role is decided by the repositories against the stored account, inside each operation
+/// (<see cref="ActorRevokedException"/>), and <see cref="AsActorAsync{T}"/> turns a refusal there into
+/// the one answer that asks the user to sign in again.
 /// </remarks>
 internal static class Access
 {
