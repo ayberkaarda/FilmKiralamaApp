@@ -79,7 +79,7 @@ namespace FilmKiralama.UI
         internal PagedResult<ReviewDetails>? ShownReviews { get; private set; }
 
         /// <summary>The review whose row is selected, or <see langword="null"/>.</summary>
-        internal ReviewDetails? Selected => _grid.CurrentRow?.DataBoundItem is ReviewRow row && _grid.SelectedRows.Count > 0 ? row.Review : null;
+        internal ReviewDetails? Selected => _grid.SelectedRows.Count == 1 && _grid.SelectedRows[0].DataBoundItem is ReviewRow row ? row.Review : null;
 
         /// <summary>Loads one page of the reviews; only the latest request is shown and binding selects nothing.</summary>
         internal async Task LoadAsync(int page)
