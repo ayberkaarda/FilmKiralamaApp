@@ -84,7 +84,7 @@ internal sealed class FilmService(IFilmRepository films, TimeProvider timeProvid
     public async Task<int> AddAsync(UserSession session, FilmInput input, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
-        var film = Validate(input);
+        var film = Validate(input, change: false);
         var id = await audit.AsActorAsync(session, () => films.AddAsync(session.UserId, film, cancellationToken)).ConfigureAwait(false);
         audit.Record(AuditEvent.FilmChanged, AuditRole.Admin);
         return id;
@@ -93,7 +93,7 @@ internal sealed class FilmService(IFilmRepository films, TimeProvider timeProvid
     public async Task UpdateAsync(UserSession session, int filmId, FilmInput input, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
-        var film = Validate(input);
+        var film = Validate(input, change: true);
         film.Id = filmId;
         var outcome = await audit.AsActorAsync(session, () => films.UpdateAsync(session.UserId, film, cancellationToken)).ConfigureAwait(false);
         switch (outcome)
@@ -126,9 +126,11 @@ internal sealed class FilmService(IFilmRepository films, TimeProvider timeProvid
 
     /// <summary>
     /// Checks every field of <paramref name="input"/> and collects one message per invalid field, as the
-    /// original form marked each empty field; nothing is stored unless all are valid.
+    /// original form marked each empty field; nothing is stored unless all are valid. On a
+    /// <paramref name="change"/> the description may be empty (stored as NULL): the upgrade keeps films
+    /// of the original application without one, and they can be changed or listed again as they are.
     /// </summary>
-    private Film Validate(FilmInput input)
+    private Film Validate(FilmInput input, bool change)
     {
         ArgumentNullException.ThrowIfNull(input);
 
@@ -136,7 +138,9 @@ internal sealed class FilmService(IFilmRepository films, TimeProvider timeProvid
         var title = Text(input.Title, nameof(FilmInput.Title), "Ad", InputRules.TitleMaxLength, errors);
         var genre = Text(input.Genre, nameof(FilmInput.Genre), "Tür", InputRules.GenreMaxLength, errors);
         var director = Text(input.Director, nameof(FilmInput.Director), "Yönetmen", InputRules.DirectorMaxLength, errors);
-        var about = Text(input.About, nameof(FilmInput.About), "Hakkında kısmı", InputRules.AboutMaxLength, errors);
+        var about = change && string.IsNullOrWhiteSpace(input.About)
+            ? null
+            : Text(input.About, nameof(FilmInput.About), "Hakkında kısmı", InputRules.AboutMaxLength, errors);
 
         var maxYear = timeProvider.Today().Year;
         var yearText = input.Year?.Trim();

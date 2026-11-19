@@ -17,7 +17,10 @@ public interface IAccountService
     /// <summary>Adds an account with any role; every field is required.</summary>
     Task<int> AddAsync(UserSession session, AccountInput input, CancellationToken cancellationToken = default);
 
-    /// <summary>Changes an account; the last admin keeps the admin role.</summary>
+    /// <summary>
+    /// Changes an account; the last admin keeps the admin role. E-mail and phone may be empty (accounts
+    /// kept from the original application have none) and are checked only when given.
+    /// </summary>
     Task UpdateAsync(UserSession session, int userId, AccountInput input, CancellationToken cancellationToken = default);
 
     /// <summary>Deletes an account that is no admin and has no rentals.</summary>
@@ -76,7 +79,7 @@ internal sealed class AccountService(IUserRepository users, IPasswordHasher pass
         Access.RequireAdmin(session, audit);
         ArgumentNullException.ThrowIfNull(input);
 
-        var (name, email, phone) = Validate(input);
+        var (name, email, phone) = await ValidateChangeAsync(userId, input, cancellationToken).ConfigureAwait(false);
         string? newHash = null;
         if (!string.IsNullOrEmpty(input.Password))
         {
@@ -141,7 +144,38 @@ internal sealed class AccountService(IUserRepository users, IPasswordHasher pass
         return (name, AccountRules.RequireValidEmail(input.Email), AccountRules.RequireValidPhone(input.Phone));
     }
 
-    private async Task RequireFreeAsync(string name, string email, string phone, int? exceptUserId, CancellationToken cancellationToken)
+    /// <summary>
+    /// Checks a change of an account. Unlike a new account, e-mail and phone may stay empty (they are
+    /// stored as NULL, as the upgrade keeps them for accounts of the original application) and are only
+    /// checked when given. A name today's rules do not allow is kept when it is the account's stored
+    /// name and fits its column, so an original account can be changed without being renamed.
+    /// </summary>
+    private async Task<(string Name, string? Email, string? Phone)> ValidateChangeAsync(int userId, AccountInput input, CancellationToken cancellationToken)
+    {
+        var name = input.UserName?.Trim();
+        if (string.IsNullOrEmpty(name) || !Enum.IsDefined(input.Role))
+        {
+            throw new BusinessRuleException(AccountRules.AllFieldsRequired);
+        }
+
+        if (!InputRules.IsValidUserName(name))
+        {
+            var stored = await users.FindByIdAsync(userId, cancellationToken).ConfigureAwait(false);
+            var unchanged = stored is not null
+                && string.Equals(stored.UserName, name, StringComparison.Ordinal)
+                && name.Length <= InputRules.StoredUserNameMaxLength;
+            if (!unchanged)
+            {
+                AccountRules.RequireValidUserName(name, allowReserved: true);
+            }
+        }
+
+        var email = string.IsNullOrWhiteSpace(input.Email) ? null : AccountRules.RequireValidEmail(input.Email);
+        var phone = string.IsNullOrWhiteSpace(input.Phone) ? null : AccountRules.RequireValidPhone(input.Phone);
+        return (name, email, phone);
+    }
+
+    private async Task RequireFreeAsync(string name, string? email, string? phone, int? exceptUserId, CancellationToken cancellationToken)
     {
         var taken = await users.FindTakenAsync(name, email, phone, exceptUserId, cancellationToken).ConfigureAwait(false);
         if (taken != AccountFields.None)

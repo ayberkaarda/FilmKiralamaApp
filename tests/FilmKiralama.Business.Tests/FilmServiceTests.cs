@@ -118,6 +118,24 @@ public sealed class FilmServiceTests
         Assert.Empty(_audit.Entries);
     }
 
+    /// <summary>The upgrade keeps original films without a description (Hakkinda NULL); they can be listed again as they are.</summary>
+    [Fact]
+    public async Task Update_LegacyFilmWithoutAbout_CanBeListed()
+    {
+        Film? stored = null;
+        _films.Setup(f => f.UpdateAsync(Sessions.Admin.UserId, It.Is<Film>(film => film.Id == 9), It.IsAny<CancellationToken>()))
+            .Callback<int, Film, CancellationToken>((_, film, _) => stored = film)
+            .ReturnsAsync(FilmUpdateOutcome.Updated);
+
+        await Service().UpdateAsync(Sessions.Admin, 9, Valid with { About = "  ", IsListed = true }, Ct);
+
+        Assert.NotNull(stored);
+        Assert.Null(stored.About);
+        Assert.True(stored.IsListed);
+        var tooLong = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 9, Valid with { About = new string('a', 4001) }, Ct));
+        Assert.Equal([nameof(FilmInput.About)], tooLong.FieldErrors.Keys);
+    }
+
     [Fact]
     public async Task Delete_FilmWithRentals_IsRefused()
     {

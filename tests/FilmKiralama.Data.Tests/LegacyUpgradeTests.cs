@@ -133,6 +133,20 @@ public sealed class LegacyUpgradeTests
         Assert.True(receipt.RentalId > 3);
         var filmId = await AddFilmAsync(provider, "Yeni Film", 2, admin: admin);
         Assert.True(filmId > 9);
+
+        // Rows the upgrade kept with NULLs can be saved from the admin forms as they are: the password of
+        // an account without e-mail and phone is reset, a film without a description is listed again.
+        await provider.GetRequiredService<IAccountService>().UpdateAsync(admin, 6, new AccountInput("eski", "Yeni.Sifre12", "", "", UserRole.User), Ct);
+        Assert.Equal(6, (await auth.SignInAsync("eski", "Yeni.Sifre12", Ct)).UserId);
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE KullaniciID = 6 AND Eposta IS NULL AND Telefon IS NULL", Ct));
+        var filmService = provider.GetRequiredService<IFilmService>();
+        var hidden = await filmService.GetAsync(admin, 9, Ct);
+        await filmService.UpdateAsync(
+            admin,
+            9,
+            new FilmInput(hidden.Title, hidden.Genre, "2011", hidden.Director, "8", hidden.ImageUrl, hidden.About, hidden.TotalCopies, IsListed: true),
+            Ct);
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Filmler WHERE FilmID = 9 AND KiralamayaAcik = 1 AND Hakkinda IS NULL", Ct));
     }
 
     [Fact]

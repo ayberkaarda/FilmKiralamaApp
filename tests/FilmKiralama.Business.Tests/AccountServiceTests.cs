@@ -1,5 +1,6 @@
 using FilmKiralama.Business.Security;
 using FilmKiralama.Business.Services;
+using FilmKiralama.Business.Validation;
 using FilmKiralama.Domain.Entities;
 using FilmKiralama.Domain.Repositories;
 using Moq;
@@ -85,6 +86,56 @@ public sealed class AccountServiceTests
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().DeleteAsync(Sessions.Admin, 5, Ct));
 
         Assert.Equal(message, error.Message);
+    }
+
+    /// <summary>The upgrade keeps original accounts without e-mail and phone; an admin can still reset their password.</summary>
+    [Fact]
+    public async Task Update_LegacyAccountWithoutEmailOrPhone_ResetsPassword()
+    {
+        AccountUpdate? sent = null;
+        _users.Setup(u => u.FindTakenAsync("eski", null, null, 6, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.UserId, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>()))
+            .Callback<int, AccountUpdate, CancellationToken>((_, update, _) => sent = update)
+            .ReturnsAsync(AccountUpdateOutcome.Updated);
+
+        await Service().UpdateAsync(Sessions.Admin, 6, new AccountInput("eski", "Yeni.Sifre12", " ", "", UserRole.User), Ct);
+
+        Assert.NotNull(sent);
+        Assert.Null(sent.Email);
+        Assert.Null(sent.Phone);
+        Assert.Equal(PasswordVerificationResult.Success, _hasher.Verify("Yeni.Sifre12", sent.NewPasswordHash!, Domain.Entities.PasswordFormat.Pbkdf2));
+    }
+
+    /// <summary>An original account keeps a name today's rules no longer allow, as long as it stays the same.</summary>
+    [Fact]
+    public async Task Update_LegacyNameKeptAsItIs_IsAcceptedButNotANewOneLikeIt()
+    {
+        // Spaces and 40 characters: refused for new names, kept for the original account.
+        var legacyName = "eski hesap adi bosluklu ve 32den uzun ad";
+        _users.Setup(u => u.FindByIdAsync(6, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AccountCredentials(6, legacyName, UserRole.User, "abcd", Domain.Entities.PasswordFormat.LegacyPlainText, 0, null));
+        _users.Setup(u => u.FindTakenAsync(legacyName, null, null, 6, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.UserId, It.Is<AccountUpdate>(a => a.UserName == legacyName), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AccountUpdateOutcome.Updated);
+
+        await Service().UpdateAsync(Sessions.Admin, 6, new AccountInput(legacyName, "Yeni.Sifre12", null, null, UserRole.User), Ct);
+        var renamed = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => Service().UpdateAsync(Sessions.Admin, 6, new AccountInput("baska bosluklu ad", null, null, null, UserRole.User), Ct));
+
+        Assert.Equal(AccountRules.UserNameInvalid, renamed.Message);
+    }
+
+    [Fact]
+    public async Task Update_ContactValuesThatAreGiven_AreStillChecked()
+    {
+        var email = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 6, Valid with { Email = "eposta-degil" }, Ct));
+        var phone = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 6, Valid with { Phone = "12" }, Ct));
+        var addition = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().AddAsync(Sessions.Admin, Valid with { Email = null }, Ct));
+
+        Assert.Equal(AccountRules.EmailInvalid, email.Message);
+        Assert.Equal(AccountRules.PhoneInvalid, phone.Message);
+        Assert.Equal(AccountRules.AllFieldsRequired, addition.Message);
+        _users.VerifyNoOtherCalls();
     }
 
     [Fact]
