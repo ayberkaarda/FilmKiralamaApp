@@ -9,6 +9,17 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) esas alınara
 
 ### Eklenenler
 
+- Ada, türe, yıl aralığına, en düşük puana ve müsaitliğe göre katalog araması; servis tarafında kararlı sırayla
+  sayfalanır (müşteriler için sayfada 12, yöneticiler için 50 film) ve iki ekranda da son cevap gösterilir.
+  Yöneticinin film tablosu kiralamaya kapalılar dahil tüm filmlerde arar.
+- İzleme listeleri: müşteriler daha sonra kiralamak için en fazla 100 film tutar, hangilerinin müsait olduğunu
+  görür ve listeden kiralar; kiralama filmi listeden çıkarır. Yeni tablo `IzlemeListesi` (migration `AddWatchlist`).
+- Puanlama ve yorumlar: müşterinin iade ettiği filmler için 1-5 yıldız ve en fazla 500 karakterlik düz metin yorum,
+  film başına bir tane, değiştirilebilir ve silinebilir; kartlarda ve kiralama ekranında tek ondalıklı ortalamalar;
+  yöneticiler yorumları gizler ve yeniden gösterir. Yeni tablo `Degerlendirmeler` (migration `AddReviews`).
+- Bir dönem için en çok kiralanan filmler, geciken kiralamalar ve gecikme ücretleri yönetici raporları; hesap
+  tablosu için güvenli CSV olarak kaydedilir. Müşteriler için türe dayalı öneriler.
+- Denetim kodları `review.saved`, `review.deleted`, `review.moderated`, `watchlist.changed` ve `report.exported`.
 - Serilog ile `%LOCALAPPDATA%\FilmKiralama\logs` altında günlük dönen log dosyaları: 30 günden eski dosyalar silinir
   ve en fazla 30 dosya tutulur (testler bunu tarihli dosyalarla denetler). Hata kayıtları yalnızca istisna
   türlerini, HResult kodlarını ve metot adlarını tutar.
@@ -29,6 +40,18 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) esas alınara
 
 - Hatalar izleme çıktısı yerine log dosyasına yazılır; hata pencereleri değişmedi. Reddedilen işlemler kendi
   başına log kaydı bırakmaz.
+- Giriş kilitleri ile kiralama, bitiş ve iade günleri bilgisayarın saati yerine veritabanı sunucusunun UTC saatine
+  göre belirlenir.
+- "Yalnızca müsait" kapalıyken müşteriler rafta kopyası olmayan, kiralamaya açık filmleri de görür; bu filmler
+  kiralanamaz ama izleme listesine eklenebilir.
+- `docs/grant-app-login.sql` yorum ve izleme listesi tablolarındaki hakları verir.
+
+### Düzeltilenler
+
+- Afiş boyutları çözülmeden önce dosya başlığından denetlenir; dev bir bit eşlem bildiren küçük bir dosya
+  çözülmeden reddedilir. Aynı anda en fazla üç afiş indirilir.
+- Afiş indirmeleri, IPv4'e çevrilmiş ve yerel kullanımlı NAT64 IPv6 adreslerine gizlenmiş özel adresleri, belgeleme
+  ve atma adreslerini reddeder.
 
 ### Kaldırılanlar
 
@@ -38,6 +61,8 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) esas alınara
 
 - Kullanıcı adları, e-posta adresleri, telefon numaraları, şifreler, kurulum anahtarları, film adları ve istisna
   mesajları loga asla yazılmaz.
+- Yorumlar ve aramalar loga asla yazılmaz; başka bir hesabın yorumu ya da izleme listesi kaydı, olmayan bir kayıtla
+  aynı cevabı alır ve aynı girdileri bırakır. Yorum yazarları diğer müşterilere maskeli gösterilir.
 
 ## Temel
 
