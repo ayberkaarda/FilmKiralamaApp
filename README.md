@@ -1,74 +1,397 @@
-# 🎬 Film Kiralama Otomasyonu
+# 🎬 Film Kiralama - Film Rental System (C# & SQL Server)
 
-Bu proje, C# (Windows Forms) ve SQL Server kullanılarak geliştirilmiş basit bir **Film Kiralama Otomasyonu**dur. Proje, kullanıcıların film kiralayabildiği, film listesini görüntüleyebildiği ve veritabanı üzerinde temel CRUD (Create, Read, Update, Delete) işlemlerini gerçekleştirebildiği bir yapıya sahiptir.
+🇬🇧 **English** · 🇹🇷 [Türkçe](README.tr.md)
 
-## 🚀 Özellikler
+A Windows Forms application built with .NET 10 and SQL Server for a film rental shop: customers sign up, browse
+the catalog, rent a copy of a film for a number of days and return it; admins manage films, stock, accounts and
+every active rental, and late returns are charged a daily late fee. The code is split into Domain, Business, Data
+and UI layers; database access uses EF Core, and the database is created, migrated or upgraded automatically on
+startup.
 
-- 🎞️ Film listesi görüntüleme  
-- ➕ Yeni film ekleme  
-- ✏️ Film bilgilerini güncelleme ve silme  
-- 👤 Müşteri kayıt işlemleri  
-- 📅 Film kiralama ve teslim işlemleri  
-- 🔌 SQL Server ile bağlantı
-
-## 🛠️ Kullanılan Teknolojiler
-
-- **C# (Windows Forms)**
-- **.NET Framework**
-- **SQL Server**
-- **ADO.NET** (SqlConnection, SqlCommand vs.)
-
-## 🔧 Veritabanı Bağlantısı
-
-Bağlantı dizesi koda yazılmaz. Uygulama onu sırasıyla `appsettings.json` (sürüm kontrolüne girmez), kullanıcı gizli ayarları (user secrets) ve `FILM_CONNECTION` ortam değişkeninden okur; sonraki kaynak öncekini geçersiz kılar.
-
-```powershell
-# Seçenek 1: örnek ayar dosyasını kopyalayıp bağlantı dizesini düzenleyin
-Copy-Item src\FilmKiralama.UI\appsettings.example.json src\FilmKiralama.UI\appsettings.json
-
-# Seçenek 2: kullanıcı gizli ayarları
-dotnet user-secrets set "ConnectionStrings:FilmKiralama" "Server=YOUR_SERVER_NAME;Database=FilmKiralama;Trusted_Connection=True;TrustServerCertificate=True;" --project src\FilmKiralama.UI
-
-# Seçenek 3: ortam değişkeni
-$env:FILM_CONNECTION = "Server=YOUR_SERVER_NAME;Database=FilmKiralama;Trusted_Connection=True;TrustServerCertificate=True;"
-```
-
-> ❗ `YOUR_SERVER_NAME` kısmını kendi SQL Server örneğinizin adıyla değiştirin (örneğin `localhost\SQLEXPRESS`).
-
-## 📌 Kurulum
-
-1. Projeyi klonlayın ve [.NET 10 SDK](https://dotnet.microsoft.com/download) kurulu olduğundan emin olun.
-2. Bağlantı dizesini yukarıdaki yollardan biriyle verin.
-3. Derleyip çalıştırın: `dotnet run --project src\FilmKiralama.UI`. Veritabanı ilk açılışta EF Core migration'larıyla oluşturulur; eski uygulamanın veritabanı verileri korunarak yerinde yükseltilir. Migration'ları elle uygulamak için: `dotnet tool restore` ve `dotnet ef database update --project src\FilmKiralama.Data`.
-4. Boş bir veritabanında varsayılan hesap yoktur: ilk açılışta yönetici hesabını kendi belirlediğiniz şifreyle oluşturursunuz. Hesapları olup yöneticisi olmayan bir veritabanında ilk yönetici, veritabanı sahibinin `docs\issue-setup-key.sql` betiğiyle ürettiği kurulum anahtarıyla oluşturulur. Uygulamanın kendi SQL oturumu için örnek yetkiler `docs\grant-app-login.sql` dosyasındadır.
-5. Deneme verisi yalnızca istenirse ve yalnızca boş veritabanına eklenir: `FILM_DEMO=1` ya da `"Seed": { "Demo": true }`. Deneme hesapları: `yonetici` / `Demo.Yonetici1`, `ornek` / `Demo.Kullanici1`. Gerçek bir kurulumda açmayın.
-6. Testler: `dotnet test -c Release`. SQL Server testleri varsayılan olarak `localhost\SQLEXPRESS` kullanır (`FILM_TEST_SQLSERVER` ile değiştirilebilir); `FILM_SKIP_SQL_TESTS=1` bu testleri atlar.
-
-## 📸 Ekran Görüntüleri
-
-### Giriş Ekranı
-![Ana Ekran](screenshots/login.png)
-
-### Kiralık Filmler Ekranı
-![Kiralık Filmler](screenshots/homepage.png)
-
-### Film Kiralama Ekranı
-![Film Kiralama](screenshots/rent.png)
-
-### Kiralanan Filmi İptal Etme (Kullanıcı)
-![Kiralamayı İptal Etme](screenshots/user_rent_cancel.png)
-
-### Admin Paneli
-![Film Bilgilerini Görüntüleme Güncelleme](screenshots/admin_panel.png)
-
-### Admin Kullanıcı Yönetim Paneli
-![Kullanıcı Bilgilerini Görüntüleme Güncelleme](screenshots/admin_panel2.png)
-
-### Admin Kiralık Filmler Yönetim Paneli
-![Kiralık Filmleri Görüntüleme İptal Etme](screenshots/admin_rent_cancel.png)
-
-```
+> The application's user interface is in Turkish. Screen and button names below are given with their Turkish
+> labels followed by an English translation, e.g. "Film Ekle" (Add Film).
 
 ---
 
-Teşekkürler! 😊 Projeyi faydalı bulduysanız yıldız bırakmayı unutmayın. Geliştirme sürecine katkıda bulunmak isterseniz PR (Pull Request) gönderebilirsiniz.
+## 📦 Features
+
+### Film catalog
+
+- ✅ **Catalog** ("Film Kirala", Rent a Film): the films a customer can rent now, that is listed films with a copy on
+  the shelf, with poster, title, genre, year, director and daily price.
+- ✅ **Filters** by genre ("Tür"), director ("Yönetmen") and year ("Yıl"); filling the filter lists never starts a
+  load by itself, and only the answer to the latest filter is shown.
+- ✅ **Posters** are loaded in the background from public http or https addresses only; anything else shows the
+  application's own placeholder.
+
+### Rentals and returns
+
+- ✅ **Rent** ("Kirala", Rent → "Kiralama Ekranı", Rental Screen): choose the number of days ("Gün Sayısı") from 1 to
+  the configured maximum (365 by default); the total is the daily price ("Günlük Ücret") times the days. "Ödemeye
+  Geç" (Proceed to Payment) shows the start and due dates and asks for confirmation. No payment is taken.
+- ✅ **One active rental per film**: an account cannot rent the same film again before returning it.
+- ✅ **Price check**: when the daily price changes after the quote was shown, the rental is refused and nothing is
+  written.
+- ✅ **Return** ("İade Et", Return) from the customer's profile ("Kullanıcı Profili", User Profile), which lists the
+  account's own active rentals; admins take any rental back ("İade Al", Take Back) in the rental panel ("Kiralama
+  Paneli").
+
+### Stock
+
+- ✅ Every film has a number of copies ("Adet", 1-1000) and the copies on the shelf. A rental takes one copy off
+  the shelf and a return puts it back, both in one database transaction under the film's lock, so concurrent
+  customers can never take more copies than the shop owns; the last copy goes to exactly one of them.
+- ✅ A film without a copy on the shelf leaves the catalog until a copy comes back.
+- ✅ The copies of a film cannot be set below the copies rented out; "Kiralamaya açık" (Open for rental) hides a film
+  from customers without deleting it.
+
+### Late fee
+
+- ✅ A return after the due day costs the configured fee (`Rental:DailyLateFee`, 10.00 by default) for every
+  calendar day after the due day; a return on the due day costs nothing. The fee is computed in `decimal`, stored
+  with the rental and capped at the largest amount the money column can hold.
+- ✅ The fee a return would cost today is shown before the return is confirmed.
+
+### Admin panel
+
+- ✅ **Films** ("Yönetim Paneli", Admin Panel): add ("Film Ekle"), change ("Filmi Güncelle") and delete ("Filmi Sil")
+  films with title, genre, year, director, daily price, poster link ("Resim Linki"), description ("Hakkında") and
+  copies. Every invalid field is marked next to its control. A film with rental history cannot be deleted; it can
+  be closed for rental instead.
+- ✅ **Accounts** ("Kullanıcı Yönetim Paneli", User Management Panel): add, change and delete accounts with role,
+  e-mail and phone; a new password replaces the old one and lifts a lock. Admins and accounts with rentals cannot
+  be deleted, and the last admin keeps the admin role.
+- ✅ **Rentals** ("Kiralanan Filmler", Rented Films): every active rental, filterable by genre, director and year;
+  taking one back shows the late fee it costs today first.
+
+### Security
+
+- ✅ Passwords are stored as PBKDF2-HMAC-SHA256 hashes (600,000 iterations, random salt); plain text passwords of
+  the original application are replaced with a hash on the next successful sign-in.
+- ✅ 5 failed sign-ins lock the account for 15 minutes; unknown accounts, wrong passwords and locked accounts get
+  the same answer.
+- ✅ Every call is checked against the signed-in session, and every privileged operation checks the account's
+  stored role again in the database: a deleted or demoted account's open session is asked to sign in again.
+  Customers reach only their own rentals; another account's rental gets the same answer as a missing one.
+- ✅ Central FluentValidation validators with Turkish messages (empty fields, e-mail format, password policy, film
+  fields, rental days); write buttons ignore repeated clicks while an operation is pending.
+- ✅ Daily log files without personal data, with anonymous audit codes.
+
+---
+
+## 🖼️ Screenshots
+
+The screenshots in `screenshots/` are being redrawn for the new design and return with it. The earlier images showed
+third-party film posters and were removed.
+
+---
+
+## 🔑 Permission Matrix
+
+| Action | User | Admin |
+|---|---|---|
+| Sign up an account | ✅ (from the sign-in screen, user role) | ❌ (the first admin comes from the setup) |
+| Sign in | ✅ | ✅ |
+| Browse and filter the catalog | ✅ listed films with a copy on the shelf | ✅ |
+| Rent a film | ✅ one active rental per film | ✅ (through the services; the admin screens do not offer it) |
+| List active rentals | ✅ their own | ✅ all, with filters |
+| Return a rental | ✅ their own | ✅ any |
+| Change their own password | ✅ (profile) | ✅ (through the account management) |
+| Add, change or delete films | ❌ | ✅ |
+| Add, change or delete accounts, set roles | ❌ | ✅ (no admin deleted, the last admin stays admin) |
+| Create the first admin | ❌ (empty database, or with the owner's setup key only) | - |
+
+---
+
+## 🧰 Tech Stack
+
+| Area | Used |
+|---|---|
+| Platform | .NET 10 (`net10.0-windows` UI, `net10.0` libraries) |
+| UI | Windows Forms |
+| Data access | Entity Framework Core 10 (SQL Server provider) |
+| Database | Microsoft SQL Server (Express is enough) |
+| Password hashing | PBKDF2-HMAC-SHA256 (`Rfc2898DeriveBytes.Pbkdf2`) |
+| Validation | FluentValidation |
+| Configuration / DI | Microsoft.Extensions.Configuration (JSON, user secrets, environment), Microsoft.Extensions.DependencyInjection |
+| Logging | Serilog (file sink, daily rolling) |
+| Testing | xUnit v3, Moq, EF Core SQLite (in-memory), real SQL Server tests |
+| CI | GitHub Actions (`.github/workflows/ci.yml`) |
+
+---
+
+## 🗂️ Project Structure
+
+```text
+FilmKiralamaApp/
+├── src/
+│   ├── FilmKiralama.Domain/     # Entities (User, Film, Rental, SetupKey) and repository contracts
+│   ├── FilmKiralama.Business/   # Auth, setup, film, rental and account services, late fee, Security/ (PBKDF2, lockout, setup keys), Validation/ (FluentValidation), Auditing/
+│   ├── FilmKiralama.Data/       # EF Core DbContext, configurations, Persistence/Migrations/, legacy upgrade, film locks, demo data, repositories
+│   └── FilmKiralama.UI/         # WinForms screens, Infrastructure/ (errors, logging, dialogs, write guard, poster loader), Program.cs (composition root)
+├── tests/
+│   ├── FilmKiralama.Business.Tests/  # Validators, audit codes, hashing, lockout, rental rules, late fees and ownership (Moq)
+│   ├── FilmKiralama.Data.Tests/      # Services on SQLite; races, setup keys and the legacy upgrade on SQL Server
+│   └── FilmKiralama.UI.Tests/        # Configuration, errors, logs, posters, focus and write guards (no windows shown)
+├── assets/                      # Original logo, background, sign-in picture, poster placeholder and icon with their SVG sources
+├── docs/
+│   ├── issue-setup-key.sql      # Setup key, run by the database owner
+│   ├── grant-app-login.sql      # Rights of the application's own login
+│   └── THREAT_MODEL.md          # Threat model
+├── screenshots/                 # Screenshots (redrawn with the design update)
+├── .github/workflows/ci.yml     # Build, test, SQL Server and release workflow
+├── CHANGELOG.md
+└── FilmKiralama.sln
+```
+
+```mermaid
+flowchart TD
+    UI["FilmKiralama.UI<br/>WinForms, DI, error handling, Serilog, poster loader"] --> BUS["FilmKiralama.Business<br/>Auth, setup, film, rental and account services, FluentValidation, PBKDF2, late fee, audit events"]
+    UI --> DATA["FilmKiralama.Data<br/>EF Core, repositories, migrations, legacy upgrade, film locks"]
+    BUS --> DOM["FilmKiralama.Domain<br/>Entities, repository contracts"]
+    DATA --> DOM
+    DATA --> DB[("SQL Server<br/>FilmKiralama")]
+    UI -.-> LOG[["%LOCALAPPDATA%\FilmKiralama\logs"]]
+    UI -.-> WEB(("Public poster addresses"))
+```
+
+The UI references Data only to register dependencies at startup; forms work through the Business services, which
+take the signed-in session on every call. All database access is asynchronous and parameterised. The provider is
+configured through DI (`AddDataAccess`), so tests can use SQLite in-memory.
+
+---
+
+## 🛠️ Setup and Usage
+
+### Requirements
+
+- .NET 10 SDK (Windows)
+- SQL Server (Express is enough)
+
+```powershell
+git clone https://github.com/ayberkaarda/FilmKiralamaApp.git
+cd FilmKiralamaApp
+dotnet build -c Release
+```
+
+### 1. Configuration
+
+The connection string is never written into the code. Provide one named `FilmKiralama`; any of the following works
+(later ones override earlier ones):
+
+1. **`appsettings.json`**: copy `src/FilmKiralama.UI/appsettings.example.json` to `appsettings.json` in the same
+   folder and edit `ConnectionStrings:FilmKiralama`. `appsettings.json` is git-ignored.
+
+   ```json
+   {
+     "ConnectionStrings": {
+       "FilmKiralama": "Server=localhost\\SQLEXPRESS;Database=FilmKiralama;Trusted_Connection=True;TrustServerCertificate=True;"
+     },
+     "Seed": {
+       "Demo": false
+     },
+     "Rental": {
+       "DailyLateFee": 10.00,
+       "MaxRentalDays": 365
+     }
+   }
+   ```
+
+2. **User secrets**:
+
+   ```powershell
+   dotnet user-secrets set "ConnectionStrings:FilmKiralama" "Server=YOUR_SERVER_NAME;Database=FilmKiralama;Trusted_Connection=True;TrustServerCertificate=True;" --project src/FilmKiralama.UI
+   ```
+
+3. **Environment variable** `ConnectionStrings__FilmKiralama`.
+4. **Environment variable** `FILM_CONNECTION` (highest priority):
+
+   ```powershell
+   $env:FILM_CONNECTION = "Server=YOUR_SERVER_NAME;Database=FilmKiralama;Trusted_Connection=True;TrustServerCertificate=True;"
+   ```
+
+> Replace `YOUR_SERVER_NAME` with your SQL Server instance, for example `localhost\SQLEXPRESS`. Inside JSON the `\`
+> is written as `\\`. `TrustServerCertificate=True` is meant for a local development server only.
+
+The `Rental` section sets the late fee per day (0-10,000, at most two decimals, written with a decimal point in
+JSON) and the longest rental in days (1-3650). If no connection string is found or the rental settings are invalid,
+the application shows a Turkish message naming the problem and exits.
+
+### 2. Running
+
+```powershell
+dotnet run --project src/FilmKiralama.UI
+```
+
+You do not need to create tables by hand: the database is created on first start and pending EF Core migrations
+are applied automatically on every start.
+
+### 3. Database migrations and upgrading an old database
+
+New migrations are applied by the application on start. To list them, apply them by hand or add one:
+
+```powershell
+dotnet tool restore
+dotnet ef migrations list --project src/FilmKiralama.Data
+dotnet ef database update --project src/FilmKiralama.Data
+dotnet ef migrations add <Name> --project src/FilmKiralama.Data --output-dir Persistence/Migrations
+```
+
+The design-time factory reads `FILM_CONNECTION` and otherwise uses a local SQL Server Express instance. Apply
+migrations with the database owner's connection; the application's restricted login has no DDL rights.
+
+**Upgrading the original application's database:** `dotnet ef database update` does **not** upgrade it. Such a
+database has the tables `Kullanicilar`, `Filmler` and `Kiralama` but no migrations history, so EF Core would try to
+create the tables again. Start the application instead: on start-up `DatabaseInitializer` first runs the legacy
+upgrade, which brings the old tables to the shape of the first migration and records it as applied, and only then
+applies the remaining migrations. The upgrade keeps every row, identity value and plain text password: passwords
+are marked as legacy plain text and hashed on each account's next successful sign-in, every film gets one copy, the
+original rentals become active rentals with their planned return day, and a film that was hidden by hand stays
+unlisted. It runs in one transaction under an application lock (`sp_getapplock`), so concurrent starts upgrade
+once, and it is safe to repeat. When rows have no certain meaning (an unknown role or status, a film marked
+available while it is rented, a film rented twice, a rental without its film), it stops before changing anything
+and the application lists the problems as counts only.
+
+Take a backup of the database before the first start with the new version and keep it protected: it still
+contains the plain text passwords.
+
+### 4. First-run setup
+
+- **Empty database (no account at all):** the default installation creates no account and contains no ready-made
+  password. The **"İlk Kurulum"** (First-Run Setup) screen opens and you create the first admin account with a
+  password of your own choosing. No key is needed. Closing the setup ends the application.
+- **Database with accounts but no admin** (for example an upgraded old database): the application opens with the
+  normal sign-in; a missing admin alone gives nobody any rights. The first admin can be created only with a
+  **setup key**: the **"İlk yönetici hesabını oluştur"** (Create the first admin account) link on the sign-in screen
+  opens the setup form, which asks for the key ("Kurulum Anahtarı", Setup Key).
+- The application never creates keys. Only the **database owner** (db_owner or sysadmin) runs
+  `docs/issue-setup-key.sql` connected to the application's database, for example
+  `sqlcmd -S <server> -d <database> -E -i docs\issue-setup-key.sql`. The script makes a 32 hexadecimal character
+  key from 16 random bytes (128 bits), stores only its SHA-256 hash in the `KurulumAnahtarlari` table and shows the
+  key once. It refuses to issue a key when the database already has an admin.
+- `docs/grant-app-login.sql` gives the application's own login example rights: on the key table only reading and
+  marking a key used; it cannot add, delete or change a key. Rentals are never deleted. Do the first start (schema
+  creation or upgrade) with the database owner's connection, then point the application's connection string at
+  this login.
+- Type the key into the form (dashes, spaces and letter case do not matter) or provide it with the
+  `FILM_SETUP_KEY` environment variable, which only fills in the field. A key is valid for 24 hours and works once:
+  it is marked used together with the write that creates the admin account. Its expiry is decided by the
+  database's clock, and every wrong attempt is followed by a 1 second pause.
+
+### 5. Demo mode
+
+Demo mode is opt-in and off by default. The environment variable `FILM_DEMO=1` (or `true`), or
+`"Seed": { "Demo": true }` in `appsettings.json`, adds fictional films and accounts only to a completely empty
+database. Only with demo mode on are these accounts created:
+
+| Role | User name (demo mode only) | Password (demo mode only) |
+|---|---|---|
+| Admin | `yonetici` | `Demo.Yonetici1` |
+| User | `ornek` | `Demo.Kullanici1` |
+
+Never switch demo mode on for a real installation.
+
+### 6. Logs
+
+Logs are written to `%LOCALAPPDATA%\FilmKiralama\logs`, one file per day (`filmkiralama-yyyyMMdd.log`). Files older
+than 30 days are deleted, and at most 30 files are kept. The folder is outside the repository. Error entries contain
+only exception types, HResult codes and the method names of the stack trace (no messages, no file paths). Refused
+operations leave no entry of their own. Audit entries are a fixed code and a role only, never an account or a film:
+every failed sign-in (empty field, unknown account, wrong password or locked account) writes the same code,
+`auth.sign_in.failed unknown`; a new account and a sign-up with taken values both write
+`auth.account.registration_submitted user`; returning another account's rental leaves the same entries as
+returning one that does not exist.
+
+User names, e-mail addresses, phone numbers, passwords, setup keys, film titles and exception messages are never
+written to the log.
+
+---
+
+## 🔐 Security
+
+See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the threat model.
+
+- Passwords are hashed with PBKDF2; the stored format is kept in its own column, so a value is never read in
+  another format.
+- Lockout counters are updated atomically, and a successful sign-in is written only while the account is still
+  unlocked, so concurrent attempts cannot clear a fresh lock.
+- Roles and ownership are checked in the services and repeated in the database statements; the stored role of the
+  acting account is checked inside every privileged operation.
+- Poster addresses come from the database, so they are downloaded only from public addresses, with redirects
+  checked again, at most 2 MB and within 10 seconds; local paths, network shares and local network addresses are
+  never opened.
+- Connection strings are kept out of the repository (`appsettings.json` is ignored; user secrets and environment
+  variables are supported). All queries go through EF Core with parameters.
+- Users only see Turkish messages; raw exception text is never shown.
+
+---
+
+## 🧪 Testing
+
+```powershell
+dotnet test -c Release
+```
+
+| Project | Type | Scope |
+|---|---|---|
+| `tests/FilmKiralama.Business.Tests` | Unit | Validator limits and message order (user name 3/32, password 8/64, e-mail, phone, film fields, rental days), audit codes, PBKDF2 and format upgrade, lockout, rental and return rules, late fees, ownership and admin checks with strict Moq mocks |
+| `tests/FilmKiralama.Data.Tests` | Integration | Services and repositories on SQLite in-memory (shelf at zero, one and every copy, the last copy, the first late day, IDOR answers, lockout length, stale sessions, refused input writes nothing); rental and lockout races, setup keys with the restricted login and the legacy upgrade on SQL Server |
+| `tests/FilmKiralama.UI.Tests` | Unit | Example configuration, error messages, log content and retention, poster address checks, focus after unlock, write guards, latest-wins loading, neutral branding |
+
+The SQL Server tests use throw-away databases on the server in `FILM_TEST_SQLSERVER` (default: local SQL Express
+with Windows authentication). They are skipped when `FILM_SKIP_SQL_TESTS=1` is set or no server is reachable; with
+`FILM_REQUIRE_SQL_TESTS=1` (the SQL Server job of the CI) an unreachable server fails them instead. The temporary
+databases are dropped afterwards. The test with a restored backup of the original database runs only when
+`FILM_LEGACY_BACKUP` points to a `.bak` file readable by the SQL Server service.
+
+```powershell
+$env:FILM_SKIP_SQL_TESTS = "1"; dotnet test -c Release
+```
+
+On SQLite the schema is created from the model instead of migrations. The UI tests create forms without showing
+them and replace every message box, so no window opens.
+
+---
+
+## 🚀 CI and Release
+
+`.github/workflows/ci.yml` runs on pushes to `main`, on pull requests and on `v*` tags:
+
+1. **build-test** (Windows): `dotnet build -c Release` and `dotnet test -c Release` (SQL Server tests skipped)
+2. **sql-server** (Linux): the data tests against a throw-away SQL Server container, with
+   `FILM_REQUIRE_SQL_TESTS=1`
+3. **release** (only on `v*` tags): the tag name is passed through an environment variable and checked against
+   `^v[A-Za-z0-9._-]+$`; a framework-dependent win-x64 build is then published and uploaded as the workflow
+   artifact `FilmKiralama-<tag>-win-x64.zip`, together with the READMEs, the changelogs and `docs/*.sql`
+
+To produce the same build locally:
+
+```powershell
+dotnet publish src/FilmKiralama.UI -c Release -r win-x64 --self-contained false -o ./publish
+```
+
+The target machine needs the .NET 10 Desktop Runtime. Put `appsettings.json` next to `FilmKiralama.exe` or set
+`FILM_CONNECTION`.
+
+---
+
+## 👨‍💻 Developer Notes
+
+- See [CHANGELOG.md](CHANGELOG.md) for the version history.
+- `Program.cs` is the composition root: configuration, DI, logging, the audit sink and the global
+  `ThreadException` / `UnhandledException` handlers are set up there.
+- Business rule violations raise `BusinessRuleException` and permission violations `AccessDeniedException`, both
+  with fixed Turkish messages that the UI shows as warnings.
+- Validators live in `FilmKiralama.Business/Validation`. The account validators stop at the first failure, so the
+  user sees one message at a time; the film validator reports every invalid field.
+- New write buttons should go through `ExclusiveOperation` and move the focus with `FocusAfterUnlock`; loads
+  triggered by a selection should use `RequestSequence` so only the latest response is shown, and binding data in
+  code must not count as a user's selection. Message boxes go through `Dialogs` or `IUserPrompts`, never
+  `MessageBox` directly.
+- Audit events carry only an event kind and a role; do not add identifying data to them.
+
+---
+
+## 📧 Contact
+
+Feel free to get in touch with questions about the project, or send a pull request.
