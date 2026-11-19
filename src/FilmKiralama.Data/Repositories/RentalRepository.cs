@@ -17,6 +17,7 @@ internal sealed class RentalRepository(IDbContextFactory<FilmDbContext> contextF
         // Taken before anything is read: no other rental, return or stock change of this film can run
         // between the checks below and the commit.
         await Locks.FilmAsync(db, request.FilmId, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, request.UserId, admin: false, cancellationToken).ConfigureAwait(false);
 
         var film = await db.Films
             .AsNoTracking()
@@ -89,7 +90,7 @@ internal sealed class RentalRepository(IDbContextFactory<FilmDbContext> contextF
 
     public async Task<ReturnResult> ReturnAsync(
         int rentalId,
-        int? ownerId,
+        RentalActor actor,
         DateOnly returnedOn,
         Func<DateOnly?, decimal> lateFee,
         CancellationToken cancellationToken = default)
@@ -97,6 +98,11 @@ internal sealed class RentalRepository(IDbContextFactory<FilmDbContext> contextF
         ArgumentNullException.ThrowIfNull(lateFee);
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        // Checked first, so a revoked admin learns nothing about other accounts' rentals.
+        await Actors.RequireAsync(db, actor.UserId, actor.AsAdmin, cancellationToken).ConfigureAwait(false);
+        var ownerId = OwnerOf(actor);
 
         // The film decides which lock to take; a rental of another account is the same as none.
         var filmId = await Owned(db.Rentals.AsNoTracking(), ownerId)
@@ -109,7 +115,6 @@ internal sealed class RentalRepository(IDbContextFactory<FilmDbContext> contextF
             return new ReturnResult(ReturnOutcome.NotFound, null, 0m);
         }
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await Locks.FilmAsync(db, filmId.Value, cancellationToken).ConfigureAwait(false);
 
         // Read again under the lock: a concurrent return of the same rental has finished by now.
@@ -153,13 +158,14 @@ internal sealed class RentalRepository(IDbContextFactory<FilmDbContext> contextF
         return new ReturnResult(ReturnOutcome.Returned, rental.DueOn, fee);
     }
 
-    public async Task<IReadOnlyList<RentalDetails>> GetActiveAsync(int? ownerId, FilmFilter filter, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<RentalDetails>> GetActiveAsync(RentalActor actor, FilmFilter filter, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(filter);
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor.UserId, actor.AsAdmin, cancellationToken).ConfigureAwait(false);
         var query =
-            from rental in Owned(db.Rentals.AsNoTracking(), ownerId)
+            from rental in Owned(db.Rentals.AsNoTracking(), OwnerOf(actor))
             join film in FilmRepository.Matching(db.Films.AsNoTracking(), filter) on rental.FilmId equals film.Id
             join user in db.Users.AsNoTracking() on rental.UserId equals user.Id
             where rental.Status == RentalStatus.Active
@@ -181,6 +187,9 @@ internal sealed class RentalRepository(IDbContextFactory<FilmDbContext> contextF
 
         return await query.ToListAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>The account whose rentals <paramref name="actor"/> reaches, or <see langword="null"/> (every account) for an admin.</summary>
+    private static int? OwnerOf(RentalActor actor) => actor.AsAdmin ? null : actor.UserId;
 
     private static IQueryable<Rental> Owned(IQueryable<Rental> rentals, int? ownerId) =>
         ownerId is { } owner ? rentals.Where(r => r.UserId == owner) : rentals;

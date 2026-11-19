@@ -131,7 +131,7 @@ public sealed class LegacyUpgradeTests
         Assert.Equal([2, 4], catalog.Select(f => f.Id));
         var receipt = await RentAsync(provider, user, 2);
         Assert.True(receipt.RentalId > 3);
-        var filmId = await AddFilmAsync(provider, "Yeni Film", 2);
+        var filmId = await AddFilmAsync(provider, "Yeni Film", 2, admin: admin);
         Assert.True(filmId > 9);
     }
 

@@ -9,26 +9,39 @@ public interface IUserRepository
 
     Task<AccountCredentials?> FindByIdAsync(int userId, CancellationToken cancellationToken = default);
 
-    /// <summary>Every account, ordered by id, without passwords.</summary>
-    Task<IReadOnlyList<UserSummary>> GetAllAsync(CancellationToken cancellationToken = default);
+    /// <summary>Every account, ordered by id, without passwords, for the admin <paramref name="adminId"/>.</summary>
+    /// <exception cref="ActorRevokedException"><paramref name="adminId"/> is no longer a stored admin.</exception>
+    Task<IReadOnlyList<UserSummary>> GetAllAsync(int adminId, CancellationToken cancellationToken = default);
 
     /// <summary>Which of the given values another account (not <paramref name="exceptUserId"/>) already uses.</summary>
     Task<AccountFields> FindTakenAsync(string userName, string? email, string? phone, int? exceptUserId = null, CancellationToken cancellationToken = default);
 
-    /// <summary>Stores a new account and returns its id.</summary>
+    /// <summary>
+    /// Stores a new account and returns its id. With <paramref name="adminId"/> set (an admin adds the
+    /// account) that admin must still be a stored admin when the account is written; without it the
+    /// account registers itself.
+    /// </summary>
     /// <exception cref="DuplicateAccountException">The user name, e-mail or phone is taken.</exception>
-    Task<int> AddAsync(User user, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException"><paramref name="adminId"/> is no longer a stored admin.</exception>
+    Task<int> AddAsync(User user, int? adminId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Changes an account's name, contact data and role and, when <see cref="AccountUpdate.NewPasswordHash"/>
     /// is set, its password. The last admin cannot lose the admin role: the check and the write are one
-    /// conditional UPDATE, so two concurrent demotions cannot both succeed.
+    /// conditional UPDATE, so two concurrent demotions cannot both succeed. The change is made by the
+    /// admin <paramref name="adminId"/>, whose stored role is checked first under the same lock, so a
+    /// demoted admin can neither change accounts nor take the role back.
     /// </summary>
     /// <exception cref="DuplicateAccountException">The user name, e-mail or phone is taken.</exception>
-    Task<AccountUpdateOutcome> UpdateAsync(AccountUpdate update, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException"><paramref name="adminId"/> is no longer a stored admin.</exception>
+    Task<AccountUpdateOutcome> UpdateAsync(int adminId, AccountUpdate update, CancellationToken cancellationToken = default);
 
-    /// <summary>Deletes an account that is no admin and has no rentals, in one conditional DELETE.</summary>
-    Task<AccountDeleteOutcome> DeleteAsync(int userId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Deletes, for the admin <paramref name="adminId"/>, an account that is no admin and has no rentals,
+    /// in one conditional DELETE.
+    /// </summary>
+    /// <exception cref="ActorRevokedException"><paramref name="adminId"/> is no longer a stored admin.</exception>
+    Task<AccountDeleteOutcome> DeleteAsync(int adminId, int userId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Replaces the password of <paramref name="verified"/> with <paramref name="newPasswordHash"/>, only

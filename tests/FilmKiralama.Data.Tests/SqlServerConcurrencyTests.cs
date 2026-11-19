@@ -155,8 +155,10 @@ public sealed class SqlServerConcurrencyTests
                 () => b.GetRequiredService<IAccountService>().UpdateAsync(Admin(y), x, Input("xadmin" + round, 200 + round, UserRole.User), Ct),
             ]);
 
+            // The second one to get the admin role lock has lost the role by then, so its open session
+            // is refused as revoked; it can neither demote the winner nor keep the role.
             Assert.Single(results, r => r is null);
-            Assert.Equal(AccountService.LastAdmin, Assert.IsType<BusinessRuleException>(Assert.Single(results, r => r is not null)).Message);
+            Assert.Equal(AccessDeniedException.SessionRevokedMessage, Assert.IsType<AccessDeniedException>(Assert.Single(results, r => r is not null)).Message);
             Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE Rol = N'Admin'", Ct));
 
             // Hand the role back to the seed admin for the next round.
@@ -164,6 +166,48 @@ public sealed class SqlServerConcurrencyTests
             await accounts.UpdateAsync(Admin(remaining), SeedAdminId, new AccountInput("yonetici", null, "yonetici@example.com", "5550000001", UserRole.Admin), Ct);
             await accounts.UpdateAsync(Admin(SeedAdminId), remaining, remaining == x ? Input("xadmin" + round, 200 + round, UserRole.User) : Input("yadmin" + round, 300 + round, UserRole.User), Ct);
         }
+    }
+
+    /// <summary>
+    /// The stored account decides on SQL Server too (the locking read of the actor's row): a demoted
+    /// admin's open session is refused everywhere, and a deleted customer's session cannot rent.
+    /// </summary>
+    [Fact]
+    public async Task RevokedSessions_AreRefusedAndChangeNothing()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices(demo: true);
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        await using var b = database.BuildServices();
+        var accounts = a.GetRequiredService<IAccountService>();
+        var second = Input("ikinci", 1, UserRole.Admin);
+        var secondId = await accounts.AddAsync(Admin(SeedAdminId), second, Ct);
+        var demoted = await b.GetRequiredService<IAuthService>().SignInAsync("ikinci", Password, Ct);
+        var customer = await RegisterAsync(a, "giden", 2);
+        var rental = await RentAsync(a, User(SeedUserId), ThreeCopiesFilmId);
+
+        await accounts.UpdateAsync(Admin(SeedAdminId), secondId, second with { Password = null, Role = UserRole.User }, Ct);
+        await accounts.DeleteAsync(Admin(SeedAdminId), customer.UserId, Ct);
+
+        var films = b.GetRequiredService<IFilmService>();
+        var rentals = b.GetRequiredService<IRentalService>();
+        List<Func<Task>> refused =
+        [
+            () => b.GetRequiredService<IAccountService>().UpdateAsync(demoted, secondId, second with { Password = null }, Ct),
+            () => b.GetRequiredService<IAccountService>().GetAllAsync(demoted, Ct),
+            () => films.AddAsync(demoted, new FilmInput("Yeni", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 1, true), Ct),
+            () => films.DeleteAsync(demoted, ThreeCopiesFilmId, Ct),
+            () => rentals.ReturnAsync(demoted, rental.RentalId, Ct),
+            () => rentals.RentAsync(customer, rentals.Quote(ThreeCopiesFilmId, 25m, 1), Ct),
+        ];
+        foreach (var operation in refused)
+        {
+            Assert.Equal(AccessDeniedException.SessionRevokedMessage, (await Assert.ThrowsAsync<AccessDeniedException>(operation)).Message);
+        }
+
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE Rol = N'Admin'", Ct));
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Filmler WHERE Ad = N'Yeni'", Ct));
+        await AssertStockAsync(database, ThreeCopiesFilmId, active: 1, available: 2);
     }
 
     private static AccountInput Input(string name, int number, UserRole role) =>
@@ -192,7 +236,7 @@ public sealed class SqlServerConcurrencyTests
                         await operation();
                         return (Exception?)null;
                     }
-                    catch (Exception ex) when (ex is BusinessRuleException)
+                    catch (Exception ex) when (ex is BusinessRuleException or AccessDeniedException)
                     {
                         return ex;
                     }

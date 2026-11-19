@@ -1,8 +1,15 @@
 using FilmKiralama.Business.Auditing;
+using FilmKiralama.Domain.Repositories;
 
 namespace FilmKiralama.Business.Services;
 
 /// <summary>Role checks and the local calendar day shared by the services.</summary>
+/// <remarks>
+/// The role a session signed in with only decides what it may ask for. Whether the account still
+/// exists and still has that role is decided by the repositories against the stored account, inside
+/// each operation (<see cref="ActorRevokedException"/>), and <see cref="AsActorAsync{T}"/> turns a
+/// refusal there into the one answer that asks the user to sign in again.
+/// </remarks>
 internal static class Access
 {
     public static void RequireSignedIn(UserSession? session) => ArgumentNullException.ThrowIfNull(session);
@@ -19,10 +26,28 @@ internal static class Access
     }
 
     /// <summary>
-    /// The account whose rentals the session may see and return: its own id, or <see langword="null"/>
-    /// (everyone) for an admin.
+    /// The account a rental operation of the session acts for: an admin reaches every account's
+    /// rentals, anyone else their own.
     /// </summary>
-    public static int? OwnerFilter(UserSession session) => session.IsAdmin ? null : session.UserId;
+    public static RentalActor RentalActorOf(UserSession session) => new(session.UserId, session.IsAdmin);
+
+    /// <summary>
+    /// Runs a repository call for <paramref name="session"/>. When the stored account no longer exists
+    /// or no longer has the role (nothing was written), the call ends with an
+    /// <see cref="AccessDeniedException"/> carrying <see cref="AccessDeniedException.SessionRevokedMessage"/>.
+    /// </summary>
+    public static async Task<T> AsActorAsync<T>(this IAuditLog audit, UserSession session, Func<Task<T>> call)
+    {
+        try
+        {
+            return await call().ConfigureAwait(false);
+        }
+        catch (ActorRevokedException ex)
+        {
+            audit.Record(AuditEvent.SessionRevoked, AuditCodes.Of(session.Role));
+            throw new AccessDeniedException(AccessDeniedException.SessionRevokedMessage, ex);
+        }
+    }
 
     /// <summary>Today's date on the local wall clock; rental days are local calendar days.</summary>
     public static DateOnly Today(this TimeProvider timeProvider) =>

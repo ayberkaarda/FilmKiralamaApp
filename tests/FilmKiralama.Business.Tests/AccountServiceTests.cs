@@ -41,7 +41,7 @@ public sealed class AccountServiceTests
     public async Task Update_WithoutPassword_KeepsTheStoredOne()
     {
         _users.Setup(u => u.FindTakenAsync("yeni", "yeni@example.com", "5550000009", 4, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
-        _users.Setup(u => u.UpdateAsync(new AccountUpdate(4, "yeni", "yeni@example.com", "5550000009", UserRole.Admin, null), It.IsAny<CancellationToken>()))
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.UserId, new AccountUpdate(4, "yeni", "yeni@example.com", "5550000009", UserRole.Admin, null), It.IsAny<CancellationToken>()))
             .ReturnsAsync(AccountUpdateOutcome.Updated);
 
         await Service().UpdateAsync(Sessions.Admin, 4, Valid with { Password = "", Role = UserRole.Admin }, Ct);
@@ -54,8 +54,8 @@ public sealed class AccountServiceTests
     {
         string? hash = null;
         _users.Setup(u => u.FindTakenAsync("yeni", "yeni@example.com", "5550000009", 4, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
-        _users.Setup(u => u.UpdateAsync(It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>()))
-            .Callback<AccountUpdate, CancellationToken>((update, _) => hash = update.NewPasswordHash)
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.UserId, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>()))
+            .Callback<int, AccountUpdate, CancellationToken>((_, update, _) => hash = update.NewPasswordHash)
             .ReturnsAsync(AccountUpdateOutcome.Updated);
 
         await Service().UpdateAsync(Sessions.Admin, 4, Valid, Ct);
@@ -67,7 +67,7 @@ public sealed class AccountServiceTests
     public async Task Update_LastAdmin_KeepsTheRole()
     {
         _users.Setup(u => u.FindTakenAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), 1, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
-        _users.Setup(u => u.UpdateAsync(It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>())).ReturnsAsync(AccountUpdateOutcome.LastAdmin);
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.UserId, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>())).ReturnsAsync(AccountUpdateOutcome.LastAdmin);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 1, Valid with { Password = null }, Ct));
 
@@ -80,11 +80,26 @@ public sealed class AccountServiceTests
     [InlineData(AccountDeleteOutcome.NotFound, AccountService.NotFound)]
     public async Task Delete_RefusedByTheRepository_BecomesARuleMessage(AccountDeleteOutcome outcome, string message)
     {
-        _users.Setup(u => u.DeleteAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(outcome);
+        _users.Setup(u => u.DeleteAsync(Sessions.Admin.UserId, 5, It.IsAny<CancellationToken>())).ReturnsAsync(outcome);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().DeleteAsync(Sessions.Admin, 5, Ct));
 
         Assert.Equal(message, error.Message);
+    }
+
+    [Fact]
+    public async Task Update_ByAnAdminWhoseStoredRoleIsGone_AsksToSignInAgain()
+    {
+        _users.Setup(u => u.FindTakenAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), 1, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.UserId, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
+        _users.Setup(u => u.DeleteAsync(Sessions.Admin.UserId, 5, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
+
+        var update = await Assert.ThrowsAsync<AccessDeniedException>(() => Service().UpdateAsync(Sessions.Admin, 1, Valid with { Role = UserRole.Admin }, Ct));
+        var delete = await Assert.ThrowsAsync<AccessDeniedException>(() => Service().DeleteAsync(Sessions.Admin, 5, Ct));
+
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, update.Message);
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, delete.Message);
+        Assert.Equal(["access.session_revoked admin", "access.session_revoked admin"], _audit.Entries);
     }
 
     [Fact]

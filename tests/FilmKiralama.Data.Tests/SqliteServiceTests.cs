@@ -240,6 +240,110 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.Equal(UserRole.User, all.Single(u => u.Id == SeedAdminId).Role);
     }
 
+    /// <summary>
+    /// A session keeps the role it signed in with, but the stored account decides: once another admin
+    /// demotes it, its open session can no longer manage accounts, films or rentals, nor take the role back.
+    /// </summary>
+    [Fact]
+    public async Task DemotedAdminSession_CannotManageAccountsOrFilms()
+    {
+        var accounts = _db.Get<IAccountService>();
+        var films = _db.Get<IFilmService>();
+        var rentals = _db.Get<IRentalService>();
+        var auth = _db.Get<IAuthService>();
+        var bInput = new AccountInput("ikinci", Password, "ikinci@example.com", "5550000003", UserRole.Admin);
+        var b = await accounts.AddAsync(Admin(SeedAdminId), bInput, Ct);
+        var sessionB = await auth.SignInAsync("ikinci", Password, Ct);
+        Assert.True(sessionB.IsAdmin);
+        var rental = await RentAsync(_db.Services, User(SeedUserId), ThreeCopiesFilmId);
+        var removable = await AddFilmAsync(_db.Services, "Silinmeyecek", 1);
+
+        await accounts.UpdateAsync(Admin(SeedAdminId), b, bInput with { Password = null, Role = UserRole.User }, Ct);
+
+        List<Func<Task>> refused =
+        [
+            () => accounts.UpdateAsync(sessionB, b, bInput with { Password = null, Role = UserRole.Admin }, Ct),
+            () => accounts.UpdateAsync(sessionB, SeedUserId, new AccountInput("ornek", "Ele.Gecir12", "ornek@example.com", "5550000002", UserRole.Admin), Ct),
+            () => accounts.AddAsync(sessionB, new AccountInput("yedek", Password, "yedek@example.com", "5550000004", UserRole.Admin), Ct),
+            () => accounts.DeleteAsync(sessionB, SeedUserId, Ct),
+            () => accounts.GetAllAsync(sessionB, Ct),
+            () => films.AddAsync(sessionB, new FilmInput("Yeni", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 1, true), Ct),
+            () => films.UpdateAsync(sessionB, ThreeCopiesFilmId, new FilmInput("Degisti", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 9, true), Ct),
+            () => films.DeleteAsync(sessionB, removable, Ct),
+            () => films.GetAllAsync(sessionB, Ct),
+            () => rentals.ReturnAsync(sessionB, rental.RentalId, Ct),
+            () => rentals.GetActiveRentalsAsync(sessionB, FilmFilter.None, Ct),
+        ];
+        foreach (var operation in refused)
+        {
+            var error = await Assert.ThrowsAsync<AccessDeniedException>(operation);
+            Assert.Equal(AccessDeniedException.SessionRevokedMessage, error.Message);
+        }
+
+        await using var db = _db.CreateContext();
+        Assert.Equal(UserRole.User, (await db.Users.SingleAsync(u => u.Id == b, Ct)).Role);
+        Assert.Equal(UserRole.User, (await db.Users.SingleAsync(u => u.Id == SeedUserId, Ct)).Role);
+        Assert.Equal(PasswordFormat.Pbkdf2, (await db.Users.SingleAsync(u => u.Id == SeedUserId, Ct)).PasswordFormat);
+        Assert.False(await db.Users.AnyAsync(u => u.UserName == "yedek", Ct));
+        Assert.True(await db.Users.AnyAsync(u => u.Id == SeedUserId, Ct));
+        Assert.False(await db.Films.AnyAsync(f => f.Title == "Yeni" || f.Title == "Degisti", Ct));
+        Assert.True(await db.Films.AnyAsync(f => f.Id == removable, Ct));
+        Assert.Equal(RentalStatus.Active, (await db.Rentals.SingleAsync(r => r.Id == rental.RentalId, Ct)).Status);
+        await auth.SignInAsync("ornek", "Demo.Kullanici1", Ct);
+    }
+
+    /// <summary>A deleted account's open session can no longer rent or list rentals.</summary>
+    [Fact]
+    public async Task DeletedUserSession_CannotRentOrListRentals()
+    {
+        var gone = await RegisterAsync(_db.Services, "giden", 1);
+        await _db.Get<IAccountService>().DeleteAsync(Admin(SeedAdminId), gone.UserId, Ct);
+        var rentals = _db.Get<IRentalService>();
+
+        var rent = await Assert.ThrowsAsync<AccessDeniedException>(() => rentals.RentAsync(gone, rentals.Quote(ThreeCopiesFilmId, 25m, 1), Ct));
+        var list = await Assert.ThrowsAsync<AccessDeniedException>(() => rentals.GetMyActiveRentalsAsync(gone, Ct));
+
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, rent.Message);
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, list.Message);
+        Assert.Equal(3, await AvailableAsync(ThreeCopiesFilmId));
+    }
+
+    /// <summary>A deleted admin's open session can no longer manage anything.</summary>
+    [Fact]
+    public async Task DeletedAdminSession_CannotManageAccounts()
+    {
+        // Admins are never deleted by the application; another tool may still remove the row.
+        var accounts = _db.Get<IAccountService>();
+        var b = await accounts.AddAsync(Admin(SeedAdminId), new AccountInput("ikinci", Password, "ikinci@example.com", "5550000003", UserRole.Admin), Ct);
+        var sessionB = await _db.Get<IAuthService>().SignInAsync("ikinci", Password, Ct);
+        await using (var db = _db.CreateContext())
+        {
+            await db.Users.Where(u => u.Id == b).ExecuteDeleteAsync(Ct);
+        }
+
+        var error = await Assert.ThrowsAsync<AccessDeniedException>(
+            () => accounts.AddAsync(sessionB, new AccountInput("ikinci", Password, "ikinci@example.com", "5550000003", UserRole.Admin), Ct));
+
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, error.Message);
+        await using var check = _db.CreateContext();
+        Assert.False(await check.Users.AnyAsync(u => u.Id == b || u.UserName == "ikinci", Ct));
+    }
+
+    /// <summary>A customer cannot make itself an admin, whatever its session says.</summary>
+    [Fact]
+    public async Task UserSession_CannotRaiseItsOwnRole()
+    {
+        var error = await Assert.ThrowsAsync<AccessDeniedException>(() => _db.Get<IAccountService>().UpdateAsync(
+            User(SeedUserId),
+            SeedUserId,
+            new AccountInput("ornek", null, "ornek@example.com", "5550000002", UserRole.Admin),
+            Ct));
+
+        Assert.Equal(AccessDeniedException.DefaultMessage, error.Message);
+        await using var db = _db.CreateContext();
+        Assert.Equal(UserRole.User, (await db.Users.SingleAsync(u => u.Id == SeedUserId, Ct)).Role);
+    }
+
     [Fact]
     public async Task UpdateAccount_NewPasswordIsHashedAndLiftsTheLock()
     {

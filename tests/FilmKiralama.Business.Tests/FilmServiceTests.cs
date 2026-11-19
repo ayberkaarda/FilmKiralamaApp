@@ -35,8 +35,8 @@ public sealed class FilmServiceTests
     public async Task Add_StoresTheParsedFilmWithAllCopiesOnTheShelf()
     {
         Film? stored = null;
-        _films.Setup(f => f.AddAsync(It.IsAny<Film>(), It.IsAny<CancellationToken>()))
-            .Callback<Film, CancellationToken>((film, _) => stored = film)
+        _films.Setup(f => f.AddAsync(Sessions.Admin.UserId, It.IsAny<Film>(), It.IsAny<CancellationToken>()))
+            .Callback<int, Film, CancellationToken>((_, film, _) => stored = film)
             .ReturnsAsync(4);
 
         var id = await Service().AddAsync(Sessions.Admin, Valid with { Title = "  Sisli Liman  " }, Ct);
@@ -100,7 +100,7 @@ public sealed class FilmServiceTests
     [Fact]
     public async Task Add_WithoutImage_IsAllowed()
     {
-        _films.Setup(f => f.AddAsync(It.Is<Film>(film => film.ImageUrl == null), It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        _films.Setup(f => f.AddAsync(Sessions.Admin.UserId, It.Is<Film>(film => film.ImageUrl == null), It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         await Service().AddAsync(Sessions.Admin, Valid with { ImageUrl = "  " }, Ct);
     }
@@ -110,7 +110,7 @@ public sealed class FilmServiceTests
     [InlineData(FilmUpdateOutcome.NotFound, FilmService.NotFound)]
     public async Task Update_RefusedByTheRepository_BecomesARuleMessage(FilmUpdateOutcome outcome, string message)
     {
-        _films.Setup(f => f.UpdateAsync(It.Is<Film>(film => film.Id == 3), It.IsAny<CancellationToken>())).ReturnsAsync(outcome);
+        _films.Setup(f => f.UpdateAsync(Sessions.Admin.UserId, It.Is<Film>(film => film.Id == 3), It.IsAny<CancellationToken>())).ReturnsAsync(outcome);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 3, Valid, Ct));
 
@@ -121,7 +121,7 @@ public sealed class FilmServiceTests
     [Fact]
     public async Task Delete_FilmWithRentals_IsRefused()
     {
-        _films.Setup(f => f.DeleteAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(FilmDeleteOutcome.HasRentals);
+        _films.Setup(f => f.DeleteAsync(Sessions.Admin.UserId, 3, It.IsAny<CancellationToken>())).ReturnsAsync(FilmDeleteOutcome.HasRentals);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().DeleteAsync(Sessions.Admin, 3, Ct));
 

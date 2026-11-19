@@ -29,9 +29,10 @@ internal sealed class FilmRepository(IDbContextFactory<FilmDbContext> contextFac
         return new FilmFilterOptions(genres, directors, years);
     }
 
-    public async Task<IReadOnlyList<Film>> GetAllAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Film>> GetAllAsync(int adminId, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
         return await db.Films.AsNoTracking().OrderBy(f => f.Id).ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -41,25 +42,29 @@ internal sealed class FilmRepository(IDbContextFactory<FilmDbContext> contextFac
         return await db.Films.AsNoTracking().SingleOrDefaultAsync(f => f.Id == filmId, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<int> AddAsync(Film film, CancellationToken cancellationToken = default)
+    public async Task<int> AddAsync(int adminId, Film film, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(film);
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
         var entity = Copy(film);
         entity.AvailableCopies = film.TotalCopies;
         db.Films.Add(entity);
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return entity.Id;
     }
 
-    public async Task<FilmUpdateOutcome> UpdateAsync(Film film, CancellationToken cancellationToken = default)
+    public async Task<FilmUpdateOutcome> UpdateAsync(int adminId, Film film, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(film);
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await Locks.FilmAsync(db, film.Id, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
 
         var stored = await db.Films.SingleOrDefaultAsync(f => f.Id == film.Id, cancellationToken).ConfigureAwait(false);
         if (stored is null)
@@ -92,11 +97,12 @@ internal sealed class FilmRepository(IDbContextFactory<FilmDbContext> contextFac
         return FilmUpdateOutcome.Updated;
     }
 
-    public async Task<FilmDeleteOutcome> DeleteAsync(int filmId, CancellationToken cancellationToken = default)
+    public async Task<FilmDeleteOutcome> DeleteAsync(int adminId, int filmId, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await Locks.FilmAsync(db, filmId, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
 
         if (!await db.Films.AnyAsync(f => f.Id == filmId, cancellationToken).ConfigureAwait(false))
         {

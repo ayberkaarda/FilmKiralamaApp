@@ -78,14 +78,14 @@ internal sealed class FilmService(IFilmRepository films, TimeProvider timeProvid
     public Task<IReadOnlyList<Film>> GetAllAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
-        return films.GetAllAsync(cancellationToken);
+        return audit.AsActorAsync(session, () => films.GetAllAsync(session.UserId, cancellationToken));
     }
 
     public async Task<int> AddAsync(UserSession session, FilmInput input, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
         var film = Validate(input);
-        var id = await films.AddAsync(film, cancellationToken).ConfigureAwait(false);
+        var id = await audit.AsActorAsync(session, () => films.AddAsync(session.UserId, film, cancellationToken)).ConfigureAwait(false);
         audit.Record(AuditEvent.FilmChanged, AuditRole.Admin);
         return id;
     }
@@ -95,7 +95,7 @@ internal sealed class FilmService(IFilmRepository films, TimeProvider timeProvid
         Access.RequireAdmin(session, audit);
         var film = Validate(input);
         film.Id = filmId;
-        var outcome = await films.UpdateAsync(film, cancellationToken).ConfigureAwait(false);
+        var outcome = await audit.AsActorAsync(session, () => films.UpdateAsync(session.UserId, film, cancellationToken)).ConfigureAwait(false);
         switch (outcome)
         {
             case FilmUpdateOutcome.Updated:
@@ -111,7 +111,7 @@ internal sealed class FilmService(IFilmRepository films, TimeProvider timeProvid
     public async Task DeleteAsync(UserSession session, int filmId, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
-        var outcome = await films.DeleteAsync(filmId, cancellationToken).ConfigureAwait(false);
+        var outcome = await audit.AsActorAsync(session, () => films.DeleteAsync(session.UserId, filmId, cancellationToken)).ConfigureAwait(false);
         switch (outcome)
         {
             case FilmDeleteOutcome.Deleted:

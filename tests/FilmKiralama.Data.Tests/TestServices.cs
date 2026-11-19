@@ -59,10 +59,13 @@ internal static class TestServices
         return await provider.GetRequiredService<IAuthService>().SignInAsync(name, Password, ct);
     }
 
-    /// <summary>Adds a film with <paramref name="copies"/> copies through the real service and returns its id.</summary>
-    public static Task<int> AddFilmAsync(IServiceProvider provider, string title, int copies, string dailyPrice = "10") =>
+    /// <summary>
+    /// Adds a film with <paramref name="copies"/> copies through the real service, as <paramref name="admin"/>
+    /// (the seeded admin by default), and returns its id.
+    /// </summary>
+    public static Task<int> AddFilmAsync(IServiceProvider provider, string title, int copies, string dailyPrice = "10", UserSession? admin = null) =>
         provider.GetRequiredService<IFilmService>().AddAsync(
-            Admin(SeedAdminId),
+            admin ?? Admin(SeedAdminId),
             new FilmInput(title, "Dram", "2020", "Ece Deneme", dailyPrice, null, "Deneme filmi.", copies, true),
             TestContext.Current.CancellationToken);
 

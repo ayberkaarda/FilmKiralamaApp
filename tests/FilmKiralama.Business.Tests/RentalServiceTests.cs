@@ -82,7 +82,7 @@ public sealed class RentalServiceTests
     [Fact]
     public async Task Return_ByAUser_IsLimitedToTheirOwnRentals()
     {
-        _rentals.Setup(r => r.ReturnAsync(9, Sessions.User.UserId, Today, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
+        _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false), Today, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ReturnResult(ReturnOutcome.NotFound, null, 0m));
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().ReturnAsync(Sessions.User, 9, Ct));
@@ -95,7 +95,7 @@ public sealed class RentalServiceTests
     [Fact]
     public async Task Return_ByAnAdmin_HasNoOwnerFilter()
     {
-        _rentals.Setup(r => r.ReturnAsync(9, null, Today, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
+        _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: true), Today, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ReturnResult(ReturnOutcome.Returned, Today, 0m));
 
         var receipt = await Service().ReturnAsync(Sessions.Admin, 9, Ct);
@@ -105,11 +105,26 @@ public sealed class RentalServiceTests
     }
 
     [Fact]
+    public async Task Return_ByAnAccountThatIsGone_AsksToSignInAgain()
+    {
+        _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: true), Today, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ActorRevokedException());
+        _rentals.Setup(r => r.RentAsync(It.IsAny<RentalRequest>(), It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
+
+        var returned = await Assert.ThrowsAsync<AccessDeniedException>(() => Service().ReturnAsync(Sessions.Admin, 9, Ct));
+        var rented = await Assert.ThrowsAsync<AccessDeniedException>(() => Service().RentAsync(Sessions.User, Service().Quote(3, 10m, 1), Ct));
+
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, returned.Message);
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, rented.Message);
+        Assert.Equal(["access.session_revoked admin", "access.session_revoked user"], _audit.Entries);
+    }
+
+    [Fact]
     public async Task Return_ComputesTheLateFeeFromTheDueDayReadUnderTheLock()
     {
         Func<DateOnly?, decimal>? feeOf = null;
-        _rentals.Setup(r => r.ReturnAsync(9, Sessions.User.UserId, Today, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
-            .Callback<int, int?, DateOnly, Func<DateOnly?, decimal>, CancellationToken>((_, _, _, fee, _) => feeOf = fee)
+        _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false), Today, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
+            .Callback<int, RentalActor, DateOnly, Func<DateOnly?, decimal>, CancellationToken>((_, _, _, fee, _) => feeOf = fee)
             .ReturnsAsync(new ReturnResult(ReturnOutcome.Returned, Today.AddDays(-4), 30m));
 
         var receipt = await Service().ReturnAsync(Sessions.User, 9, Ct);
@@ -136,9 +151,9 @@ public sealed class RentalServiceTests
         await Assert.ThrowsAsync<AccessDeniedException>(() => Service().GetActiveRentalsAsync(Sessions.User, FilmFilter.None, Ct));
         _rentals.VerifyNoOtherCalls();
 
-        _rentals.Setup(r => r.GetActiveAsync(Sessions.User.UserId, FilmFilter.None, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _rentals.Setup(r => r.GetActiveAsync(new RentalActor(Sessions.User.UserId, AsAdmin: false), FilmFilter.None, It.IsAny<CancellationToken>())).ReturnsAsync([]);
         await Service().GetMyActiveRentalsAsync(Sessions.User, Ct);
-        _rentals.Verify(r => r.GetActiveAsync(Sessions.User.UserId, FilmFilter.None, It.IsAny<CancellationToken>()), Times.Once);
+        _rentals.Verify(r => r.GetActiveAsync(new RentalActor(Sessions.User.UserId, AsAdmin: false), FilmFilter.None, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Theory]

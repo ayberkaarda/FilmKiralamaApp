@@ -171,8 +171,8 @@ public sealed class AuthServiceTests
     {
         User? stored = null;
         _users.Setup(u => u.FindTakenAsync("yeni", "a@example.com", "5551234567", null, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
-        _users.Setup(u => u.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
-            .Callback<User, CancellationToken>((user, _) => stored = user)
+        _users.Setup(u => u.AddAsync(It.IsAny<User>(), null, It.IsAny<CancellationToken>()))
+            .Callback<User, int?, CancellationToken>((user, _, _) => stored = user)
             .ReturnsAsync(9);
 
         await Service().RegisterAsync(" yeni ", Password, " a@example.com ", "555 123 4567", Ct);
@@ -191,7 +191,7 @@ public sealed class AuthServiceTests
     public async Task Register_ConcurrentDuplicate_BecomesTheSameRuleMessage()
     {
         _users.Setup(u => u.FindTakenAsync("yeni", "a@example.com", "5551234567", null, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
-        _users.Setup(u => u.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>())).ThrowsAsync(new DuplicateAccountException(AccountFields.UserName));
+        _users.Setup(u => u.AddAsync(It.IsAny<User>(), null, It.IsAny<CancellationToken>())).ThrowsAsync(new DuplicateAccountException(AccountFields.UserName));
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().RegisterAsync("yeni", Password, "a@example.com", "5551234567", Ct));
 

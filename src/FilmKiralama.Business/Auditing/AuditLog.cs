@@ -54,6 +54,12 @@ public enum AuditEvent
 
     /// <summary>An admin added, changed or deleted an account.</summary>
     AccountChanged = 14,
+
+    /// <summary>
+    /// An open session asked for an operation after its account was deleted or lost the needed role;
+    /// recorded with the role the session signed in with.
+    /// </summary>
+    SessionRevoked = 15,
 }
 
 /// <summary>Role of the account an <see cref="AuditEvent"/> concerns.</summary>
@@ -89,6 +95,7 @@ public static class AuditCodes
         AuditEvent.RentalOutOfStock => "rental.out_of_stock",
         AuditEvent.RentalReturned => "rental.returned",
         AuditEvent.AccountChanged => "account.changed",
+        AuditEvent.SessionRevoked => "access.session_revoked",
         _ => throw new ArgumentOutOfRangeException(nameof(auditEvent), auditEvent, "Unknown audit event."),
     };
 

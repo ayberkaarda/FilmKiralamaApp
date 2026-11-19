@@ -96,9 +96,8 @@ internal sealed class RentalService(
         // The dates and the total are worked out again here; only the film, the days and the price the
         // customer saw come from the screen, and the repository refuses a price that has changed since.
         var current = Quote(quote.FilmId, quote.DailyPrice, quote.Days);
-        var result = await rentals.RentAsync(
-            new RentalRequest(current.FilmId, session.UserId, current.StartsOn, current.DueOn, current.DailyPrice, current.Total),
-            cancellationToken).ConfigureAwait(false);
+        var request = new RentalRequest(current.FilmId, session.UserId, current.StartsOn, current.DueOn, current.DailyPrice, current.Total);
+        var result = await audit.AsActorAsync(session, () => rentals.RentAsync(request, cancellationToken)).ConfigureAwait(false);
 
         var role = AuditCodes.Of(session.Role);
         switch (result.Outcome)
@@ -121,14 +120,14 @@ internal sealed class RentalService(
     public Task<IReadOnlyList<RentalDetails>> GetMyActiveRentalsAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         Access.RequireSignedIn(session);
-        return rentals.GetActiveAsync(session.UserId, FilmFilter.None, cancellationToken);
+        return audit.AsActorAsync(session, () => rentals.GetActiveAsync(new RentalActor(session.UserId, AsAdmin: false), FilmFilter.None, cancellationToken));
     }
 
     public Task<IReadOnlyList<RentalDetails>> GetActiveRentalsAsync(UserSession session, FilmFilter filter, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
         ArgumentNullException.ThrowIfNull(filter);
-        return rentals.GetActiveAsync(null, filter, cancellationToken);
+        return audit.AsActorAsync(session, () => rentals.GetActiveAsync(new RentalActor(session.UserId, AsAdmin: true), filter, cancellationToken));
     }
 
     public ReturnPreview PreviewReturn(RentalDetails rental)
@@ -146,12 +145,14 @@ internal sealed class RentalService(
 
         var today = timeProvider.Today();
         var dailyLateFee = policy.DailyLateFee;
-        var result = await rentals.ReturnAsync(
-            rentalId,
-            Access.OwnerFilter(session),
-            today,
-            dueOn => LateFeeCalculator.LateFee(dueOn, today, dailyLateFee),
-            cancellationToken).ConfigureAwait(false);
+        var result = await audit.AsActorAsync(
+            session,
+            () => rentals.ReturnAsync(
+                rentalId,
+                Access.RentalActorOf(session),
+                today,
+                dueOn => LateFeeCalculator.LateFee(dueOn, today, dailyLateFee),
+                cancellationToken)).ConfigureAwait(false);
         if (result.Outcome != ReturnOutcome.Returned)
         {
             throw new BusinessRuleException(RentalNotFound);

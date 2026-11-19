@@ -147,7 +147,7 @@ internal sealed class AuthService(
 
         try
         {
-            await users.AddAsync(user, cancellationToken).ConfigureAwait(false);
+            await users.AddAsync(user, null, cancellationToken).ConfigureAwait(false);
         }
         catch (DuplicateAccountException ex)
         {
