@@ -126,8 +126,37 @@ startup.
 
 ## 🖼️ Screenshots
 
-The screenshots in `screenshots/` are being redrawn for the new design and return with it. The earlier images showed
-third-party film posters and were removed.
+The screens are drawn offscreen from an invented rental shop: made-up film titles, directors and accounts,
+example.com addresses and poster art drawn in code (gradients and geometric shapes), so they show no real film,
+poster, studio or person. Each image links to its 2x version. To draw them again:
+`dotnet run --project tools/Screenshots -c Release -- screenshots`.
+
+| | |
+|---|---|
+| [![Sign-in](screenshots/giris.png)](screenshots/giris-2x.png)<br>**Sign-in** ("Giriş") with the brand panel | [![Sign-up](screenshots/kayit-ol.png)](screenshots/kayit-ol-2x.png)<br>**Sign-up** ("Kayıt Ol") |
+| [![First-run setup](screenshots/ilk-kurulum.png)](screenshots/ilk-kurulum-2x.png)<br>**First-run setup** ("İlk Kurulum") with a setup key | [![Catalog](screenshots/katalog.png)](screenshots/katalog-2x.png)<br>**Catalog** ("Katalog"): search row, poster cards, stock pills and pages |
+| [![Rental](screenshots/kiralama.png)](screenshots/kiralama-2x.png)<br>**Rental** ("Kiralama Ekranı") with days, total and reviews | [![Profile](screenshots/profil.png)](screenshots/profil-2x.png)<br>**Profile** ("Kullanıcı Profili"): films out and films to rate |
+| [![Review](screenshots/degerlendirme.png)](screenshots/degerlendirme-2x.png)<br>**Review** ("Film Değerlendir") of a returned film | [![Watchlist](screenshots/izleme-listesi.png)](screenshots/izleme-listesi-2x.png)<br>**Watchlist** ("İzleme Listem") with the state of each film |
+| [![Recommendations](screenshots/oneriler.png)](screenshots/oneriler-2x.png)<br>**Recommendations** ("Size Önerilenler") | [![Admin panel](screenshots/yonetim-paneli.png)](screenshots/yonetim-paneli-2x.png)<br>**Admin panel** ("Yönetim Paneli"): film table and editor |
+| [![Rented films](screenshots/kiralanan-filmler.png)](screenshots/kiralanan-filmler-2x.png)<br>**Rented films** ("Kiralanan Filmler") with the take-back of each | [![Accounts](screenshots/hesaplar.png)](screenshots/hesaplar-2x.png)<br>**Accounts** ("Kullanıcı Yönetimi") |
+| [![Review moderation](screenshots/yorumlar.png)](screenshots/yorumlar-2x.png)<br>**Review moderation** ("Yorum Yönetimi") with a hidden review | [![Reports](screenshots/raporlar.png)](screenshots/raporlar-2x.png)<br>**Reports** ("Raporlar") with CSV export |
+| [![Confirmation](screenshots/onay-penceresi.png)](screenshots/onay-penceresi-2x.png)<br>**Confirmation** ("Onay") before a film is deleted | |
+
+### Design
+
+- **Identity:** an original logo (an open clapperboard with marquee gold stripes and a play sign on a velvet plum
+  tile, `assets/logo.svg`), a velvet plum accent with a marquee gold mark (rating stars, the last copy on the shelf)
+  on plum-tinted neutrals, Franklin Gothic Medium headings (Segoe UI Semibold where it is missing) and Segoe UI body
+  text. A film without a poster shows the application's own placeholder (`assets/poster.svg`). No third-party brand,
+  poster or title is used.
+- **Themes:** light (default), dark and Windows high contrast. `Appearance:Theme` in `appsettings.json` takes
+  `Light`, `Dark` or `System` (follows the Windows app mode); high contrast always wins and uses the system colours,
+  with selected rows in the system highlight colours. Open windows follow a change of the contrast or app mode while
+  the application runs.
+- **Layout:** every screen shares one frame (header, inline message strip, scrolling body, footer with the actions),
+  is per-monitor DPI aware and opens no larger than the working area of its screen. Results and rule refusals are
+  shown inside the window; only questions open a themed message window. Lists and tables say when they load and
+  why they are empty; long titles and user names end in an ellipsis and never hide a state or a price.
 
 ---
 
@@ -179,17 +208,18 @@ FilmKiralamaApp/
 │   ├── FilmKiralama.Domain/     # Entities (User, Film, Rental, SetupKey) and repository contracts
 │   ├── FilmKiralama.Business/   # Auth, setup, film, rental and account services, late fee, Security/ (PBKDF2, lockout, setup keys), Validation/ (FluentValidation), Auditing/
 │   ├── FilmKiralama.Data/       # EF Core DbContext, configurations, Persistence/Migrations/, legacy upgrade, film locks, demo data, repositories
-│   └── FilmKiralama.UI/         # WinForms screens, Infrastructure/ (errors, logging, dialogs, write guard, poster loader), Program.cs (composition root)
+│   └── FilmKiralama.UI/         # WinForms screens, Theming/ (palettes, fonts, themed controls), Infrastructure/ (screen frame, film cards, errors, logging, dialogs, write guard, poster loader), Program.cs (composition root)
 ├── tests/
 │   ├── FilmKiralama.Business.Tests/  # Validators, audit codes, hashing, lockout, rental rules, late fees and ownership (Moq)
 │   ├── FilmKiralama.Data.Tests/      # Services on SQLite; races, setup keys and the legacy upgrade on SQL Server
-│   └── FilmKiralama.UI.Tests/        # Configuration, errors, logs, posters, focus and write guards (no windows shown)
-├── assets/                      # Original logo, background, sign-in picture, poster placeholder and icon with their SVG sources
+│   └── FilmKiralama.UI.Tests/        # Configuration, errors, logs, posters, focus, write guards, themes, layout and tab order of every screen (no windows shown)
+├── assets/                      # Original logo, icon and poster placeholder with their SVG sources
+├── tools/Screenshots/           # Icon and screenshot tool (offscreen, invented data, poster art drawn in code)
 ├── docs/
 │   ├── issue-setup-key.sql      # Setup key, run by the database owner
 │   ├── grant-app-login.sql      # Rights of the application's own login
 │   └── THREAT_MODEL.md          # Threat model
-├── screenshots/                 # Screenshots (redrawn with the design update)
+├── screenshots/                 # Screenshots at 1x and 2x
 ├── .github/workflows/ci.yml     # Build, test, SQL Server and release workflow
 ├── CHANGELOG.md
 └── FilmKiralama.sln
@@ -244,6 +274,9 @@ The connection string is never written into the code. Provide one named `FilmKir
      "Rental": {
        "DailyLateFee": 10.00,
        "MaxRentalDays": 365
+     },
+     "Appearance": {
+       "Theme": "Light"
      }
    }
    ```
@@ -266,7 +299,8 @@ The connection string is never written into the code. Provide one named `FilmKir
 
 The `Rental` section sets the late fee per day (0-10,000, at most two decimals, written with a decimal point in
 JSON) and the longest rental in days (1-3650). If no connection string is found or the rental settings are invalid,
-the application shows a Turkish message naming the problem and exits.
+the application shows a Turkish message naming the problem and exits. `Appearance:Theme` chooses the palette:
+`Light` (default), `Dark` or `System`; any other value falls back to `Light`, and Windows high contrast always wins.
 
 ### 2. Running
 
@@ -393,7 +427,7 @@ dotnet test -c Release
 |---|---|---|
 | `tests/FilmKiralama.Business.Tests` | Unit | Validator limits and message order (user name 3/32, password 8/64, e-mail, phone, film fields, rental days, ratings 0/1/5/6, comments 500/501, search and page limits, report periods), audit codes, PBKDF2 and format upgrade, lockout and rental days by the shared clock, rental and return rules, late fees, average rounding, CSV formula safety, recommendations, ownership and admin checks with strict Moq mocks |
 | `tests/FilmKiralama.Data.Tests` | Integration | Services and repositories on SQLite in-memory (shelf at zero, one and every copy, the last copy, the first late day, IDOR answers, lockout length, stale sessions, refused input writes nothing, LIKE escaping, stable pages, rating filters, rating before the return, foreign reviews and watchlist entries, the watchlist limit, report periods); rental, lockout, review, watchlist and clock races, setup keys with the restricted login and the legacy upgrade on SQL Server |
-| `tests/FilmKiralama.UI.Tests` | Unit | Example configuration, error messages, log content and retention, poster header limits and download slots, IPv6 transition addresses, focus after unlock, write guards, latest-wins searches and pages, lists bound without a selection, plain text reviews, CSV files, neutral branding |
+| `tests/FilmKiralama.UI.Tests` | Unit | Example configuration, error messages, log content and retention, poster header limits and download slots, IPv6 transition addresses, focus after unlock, write guards, latest-wins searches and pages, lists bound without a selection, plain text reviews, CSV files, neutral branding; every screen built without being shown: palette contrast, high contrast colours (also switched on while windows are open), themed controls, layout inside the window at four text sizes on 1024x600, 1366x768 and 1920x1040 working areas, tab order and inline messages |
 
 The SQL Server tests use throw-away databases on the server in `FILM_TEST_SQLSERVER` (default: local SQL Express
 with Windows authentication). They are skipped when `FILM_SKIP_SQL_TESTS=1` is set or no server is reachable; with
@@ -445,6 +479,9 @@ The target machine needs the .NET 10 Desktop Runtime. Put `appsettings.json` nex
   triggered by a selection should use `RequestSequence` so only the latest response is shown, and binding data in
   code must not count as a user's selection. Message boxes go through `Dialogs` or `IUserPrompts`, never
   `MessageBox` directly.
+- New screens derive from `AppDialog`, build their layout with `FormLayout` and read colours only from
+  `Theme.Current` (`Theming/`); the layout tests in `tests/FilmKiralama.UI.Tests` build every screen listed in
+  `TestForms` at four text sizes on three working areas.
 - Audit events carry only an event kind and a role; do not add identifying data to them.
 
 ---
