@@ -59,7 +59,8 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
   olarak gösterilir: biçimlendirme etiketleri, `&` ve formül karakterleri yazıldığı gibi görünür; satır sonu, kontrol
   ve görünmeyen biçim karakterleri (sağdan sola yazım geçersiz kılma gibi) reddedilir.
 - ✅ Yöneticiler bir yorumu gizler ya da yeniden gösterir ("Yorumlar"); gizlenen yorum herkese açık listeden ve
-  ortalamadan çıkar, yazarı değiştirse de gizli kalır.
+  ortalamadan çıkar, yazarı değiştirse ya da silip yeniden yazsa da gizli kalır (silinen gizli yorum yorumu
+  olmadan gizli işaretini korur ve yönetici dahil kimseye gösterilmez).
 
 ### Raporlar ve öneriler
 

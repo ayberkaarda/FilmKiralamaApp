@@ -93,7 +93,7 @@ Protection Law (KVKK, Law No. 6698). This document lists technical measures only
 |---|---|---|
 | Markup, script or formulas in a comment | Comments are plain text of at most 500 characters, shown only in text boxes, grid cells and labels without mnemonics; nothing interprets them | Mitigated |
 | Disguised comments (right-to-left overrides, zero-width or control characters, line breaks) | Such characters, broken surrogate pairs, private use and unassigned characters are refused; the text is stored in Unicode normalization form C | Mitigated |
-| Abusive reviews | Admins hide a review; a hidden review leaves the public list and the average and stays hidden when changed | Mitigated |
+| Abusive reviews | Admins hide a review; a hidden review leaves the public list and the average and stays hidden when changed. A hidden review is never removed: when its author deletes it, its comment is cleared and the row is kept, marked deleted, out of every list and out of the admin's reach, and the author's next review of the film takes that row back, still hidden. Tested on SQLite | Mitigated |
 | Customers learning other customers' sign-in names from reviews | Authors are shown to customers as the first letter and three stars; only the admin's moderation list shows the full user name | Mitigated |
 | Search text read as a pattern | The title search escapes `%`, `_`, `[` and the escape character, so they match only themselves; search limits (title length, years, rating, page size of 1 to 50) are validated before the database is reached | Mitigated |
 | Formula injection through a CSV report | Every field is quoted and a field starting with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'` | Mitigated |

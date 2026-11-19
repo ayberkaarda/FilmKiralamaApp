@@ -59,6 +59,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- A review an admin hid is never removed: when its author deletes it, its comment is cleared and it stays hidden
+  out of every list, so writing it again leaves it hidden (column `Silindi`, migration `AddReviewDeletion`).
 - User names, e-mail addresses, phone numbers, passwords, setup keys, film titles and exception messages are never
   written to the log.
 - Review comments and searches are never written to the log; another account's review or watchlist entry gets

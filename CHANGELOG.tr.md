@@ -59,6 +59,8 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) esas alınara
 
 ### Güvenlik
 
+- Yöneticinin gizlediği bir yorum hiçbir zaman kaldırılmaz: yazarı sildiğinde yorumu temizlenir ve her listenin
+  dışında gizli kalır, böylece yeniden yazılan yorum da gizli olur (sütun `Silindi`, migration `AddReviewDeletion`).
 - Kullanıcı adları, e-posta adresleri, telefon numaraları, şifreler, kurulum anahtarları, film adları ve istisna
   mesajları loga asla yazılmaz.
 - Yorumlar ve aramalar loga asla yazılmaz; başka bir hesabın yorumu ya da izleme listesi kaydı, olmayan bir kayıtla

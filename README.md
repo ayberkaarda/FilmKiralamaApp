@@ -59,7 +59,8 @@ startup.
   text: markup, `&` and formula characters show as typed, and line breaks, control and invisible formatting
   characters (such as right-to-left overrides) are refused.
 - ✅ Admins hide a review or show it again ("Yorumlar", Reviews); a hidden review leaves the public list and the
-  average, and stays hidden when its author changes it.
+  average, and stays hidden when its author changes it or deletes it and writes it again (a deleted hidden
+  review keeps its hidden mark without its comment and is shown to nobody, the admin included).
 
 ### Reports and recommendations
 
