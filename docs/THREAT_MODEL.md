@@ -64,6 +64,7 @@ Protection Law (KVKK, Law No. 6698). This document lists technical measures only
 | Rating a film without watching it | A review is stored only when the account has a returned rental of the film, checked in the saving transaction | Mitigated |
 | Reports or moderation by a customer or a demoted admin | Reports, CSV exports, the review moderation list and hiding a review require the admin role in the service and check the stored role in the database before reading | Mitigated |
 | A computer with a wrong clock ending a lock early or charging a wrong late fee | Sign-in locks, rental, due and return days and the overdue report use the database server's UTC clock (`SYSUTCDATETIME()`); the computer's time zone only turns it into a local day. Two instances with clocks ahead and behind are tested on SQL Server | Mitigated |
+| A customer confirming dates or a late fee different from the ones stored | The rental and return confirmations read the same database clock as the rental and the return, so a computer with a wrong clock shows the stored start and due day and the charged late fee (tested on SQL Server with a computer months behind). A confirmation left open across midnight can still be a day off | Mitigated (residual) |
 
 ## Stock and locks
 

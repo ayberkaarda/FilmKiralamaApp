@@ -41,7 +41,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) esas alınara
 - Hatalar izleme çıktısı yerine log dosyasına yazılır; hata pencereleri değişmedi. Reddedilen işlemler kendi
   başına log kaydı bırakmaz.
 - Giriş kilitleri ile kiralama, bitiş ve iade günleri bilgisayarın saati yerine veritabanı sunucusunun UTC saatine
-  göre belirlenir.
+  göre belirlenir; kiralama ve iade onay pencereleri tarihleri ve gecikme ücretlerini aynı saatten gösterir.
 - "Yalnızca müsait" kapalıyken müşteriler rafta kopyası olmayan, kiralamaya açık filmleri de görür; bu filmler
   kiralanamaz ama izleme listesine eklenebilir.
 - `docs/grant-app-login.sql` yorum ve izleme listesi tablolarındaki hakları verir.

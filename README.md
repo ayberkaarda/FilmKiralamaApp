@@ -90,7 +90,8 @@ startup.
   with the rental and capped at the largest amount the money column can hold.
 - ✅ The fee a return would cost today is shown before the return is confirmed.
 - ✅ The rental, due and return days, what is overdue and the 15 minute sign-in lock follow the database server's
-  UTC clock (`SYSUTCDATETIME()`), so computers with a wrong clock still agree.
+  UTC clock (`SYSUTCDATETIME()`), so computers with a wrong clock still agree. The rental and return
+  confirmations work their dates and late fee out from the same clock, so what is confirmed is what is stored.
 
 ### Admin panel
 

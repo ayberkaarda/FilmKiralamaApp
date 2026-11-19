@@ -90,7 +90,8 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
   hesaplanır, kiralamayla birlikte saklanır ve para sütununun alabileceği en büyük tutarla sınırlanır.
 - ✅ İadenin bugün ne kadar gecikme ücreti tutacağı, iade onaylanmadan önce gösterilir.
 - ✅ Kiralama, bitiş ve iade günleri, nelerin geciktiği ve 15 dakikalık giriş kilidi veritabanı sunucusunun UTC
-  saatine (`SYSUTCDATETIME()`) göre belirlenir; saati yanlış olan bilgisayarlar da aynı sonuca varır.
+  saatine (`SYSUTCDATETIME()`) göre belirlenir; saati yanlış olan bilgisayarlar da aynı sonuca varır. Kiralama ve
+  iade onay pencereleri tarihleri ve gecikme ücretini aynı saatten hesaplar; onaylanan, saklananla aynıdır.
 
 ### Yönetim paneli
 

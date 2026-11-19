@@ -40,7 +40,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Errors are written to the log file instead of the trace output; the error dialogs are unchanged. Refused
   operations leave no log entry of their own.
-- Sign-in locks and rental, due and return days follow the database server's UTC clock instead of the computer's.
+- Sign-in locks and rental, due and return days follow the database server's UTC clock instead of the computer's;
+  the rental and return confirmations show dates and late fees from the same clock.
 - Customers also see listed films without a copy on the shelf when "Yalnızca müsait" is off; they cannot be rented
   but can go on the watchlist.
 - `docs/grant-app-login.sql` grants the rights on the review and watchlist tables.
