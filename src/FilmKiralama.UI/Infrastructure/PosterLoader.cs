@@ -16,15 +16,25 @@ namespace FilmKiralama.UI.Infrastructure;
 /// is limited: http or https only, every address a host name resolves to must be public
 /// (<see cref="UrlGuard"/>) and the connection goes to the address that was checked, redirects are
 /// followed by hand under the same rules, at most <see cref="MaxBytes"/> of an image content type,
-/// within <see cref="Timeout"/>. No proxy, cookies or credentials are used.
+/// within <see cref="Timeout"/>. No proxy, cookies or credentials are used. The pixel size the file
+/// declares is read from its header and checked against <see cref="MaxDimension"/> and
+/// <see cref="MaxPixels"/> before any pixel is decoded, and at most <see cref="MaxConcurrentDownloads"/>
+/// posters are downloaded and decoded at the same time, so a screen full of cards pointing at one hostile
+/// address cannot exhaust the memory.
 /// </remarks>
 internal sealed class PosterLoader : IDisposable
 {
     /// <summary>Largest poster accepted.</summary>
     public const int MaxBytes = 2 * 1024 * 1024;
 
-    /// <summary>Largest poster size in pixels accepted (a small file can describe a huge bitmap).</summary>
-    public const int MaxPixels = 4096 * 4096;
+    /// <summary>Largest width or height in pixels accepted (a small file can describe a huge bitmap).</summary>
+    public const int MaxDimension = 4096;
+
+    /// <summary>Largest number of pixels accepted (16 MP, about 64 MB once decoded).</summary>
+    public const long MaxPixels = (long)MaxDimension * MaxDimension;
+
+    /// <summary>Posters downloaded and decoded at the same time by one loader.</summary>
+    public const int MaxConcurrentDownloads = 3;
 
     public const int MaxRedirects = 3;
 
@@ -35,6 +45,7 @@ internal sealed class PosterLoader : IDisposable
     private readonly Func<Uri, CancellationToken, Task<Image?>> _fetch;
     private readonly HttpClient? _client;
     private readonly ConditionalWeakTable<PictureBox, PosterState> _states = new();
+    private readonly SemaphoreSlim _downloads = new(MaxConcurrentDownloads, MaxConcurrentDownloads);
 
     /// <summary>A loader that connects only to addresses <paramref name="allowAddress"/> accepts.</summary>
     public PosterLoader(Func<IPAddress, bool> allowAddress)
@@ -85,7 +96,11 @@ internal sealed class PosterLoader : IDisposable
         _ = LoadAsync(pictureBox, state, request, uri, token);
     }
 
-    public void Dispose() => _client?.Dispose();
+    public void Dispose()
+    {
+        _client?.Dispose();
+        _downloads.Dispose();
+    }
 
     /// <summary>Empties <paramref name="pictureBox"/>; a download still running for it is dropped.</summary>
     public void Clear(PictureBox pictureBox)
@@ -158,19 +173,53 @@ internal sealed class PosterLoader : IDisposable
     }
 
     /// <summary>The image in <paramref name="bytes"/> as a bitmap of its own, or <see langword="null"/>.</summary>
-    internal static Image? Decode(byte[] bytes)
+    internal static Image? Decode(byte[] bytes) => TryDecode(bytes, out var image) == PosterDecodeResult.Decoded ? image : null;
+
+    /// <summary>
+    /// Decodes <paramref name="bytes"/> into a bitmap of its own. The size the header declares is checked
+    /// first and an image beyond the limits is refused without decoding a single pixel; the image is then
+    /// opened lazily, its size checked again and only then are the pixels decoded.
+    /// </summary>
+    internal static PosterDecodeResult TryDecode(byte[] bytes, out Image? image)
     {
+        ArgumentNullException.ThrowIfNull(bytes);
+
+        image = null;
+        if (!ImageHeader.TryReadSize(bytes, out var width, out var height))
+        {
+            return PosterDecodeResult.UnknownFormat;
+        }
+
+        if (!FitsLimits(width, height))
+        {
+            return PosterDecodeResult.TooLarge;
+        }
+
         try
         {
             using var stream = new MemoryStream(bytes, writable: false);
-            using var image = Image.FromStream(stream, useEmbeddedColorManagement: false, validateImageData: true);
-            return (long)image.Width * image.Height > MaxPixels ? null : new Bitmap(image);
+
+            // Without validation GDI+ reads the header only; the pixels are decoded by the copy below.
+            using var opened = Image.FromStream(stream, useEmbeddedColorManagement: false, validateImageData: false);
+            if (!FitsLimits(opened.Width, opened.Height))
+            {
+                return PosterDecodeResult.TooLarge;
+            }
+
+            image = new Bitmap(opened);
+            return PosterDecodeResult.Decoded;
         }
         catch (Exception ex) when (ex is ArgumentException or ExternalException or OutOfMemoryException)
         {
-            return null;
+            return PosterDecodeResult.Invalid;
         }
     }
+
+    /// <summary>Whether an image of <paramref name="width"/> x <paramref name="height"/> pixels may be decoded.</summary>
+    internal static bool FitsLimits(int width, int height) =>
+        width is > 0 and <= MaxDimension
+        && height is > 0 and <= MaxDimension
+        && (long)width * height <= MaxPixels;
 
     private static async Task<byte[]?> ReadAtMostAsync(Stream stream, int limit, CancellationToken cancellationToken)
     {
@@ -244,8 +293,13 @@ internal sealed class PosterLoader : IDisposable
     private async Task LoadAsync(PictureBox pictureBox, PosterState state, int request, Uri uri, CancellationToken token)
     {
         Image? image;
+        var entered = false;
         try
         {
+            // At most MaxConcurrentDownloads downloads and decodes at a time; a request replaced while it
+            // waits gives up its turn.
+            await _downloads.WaitAsync(token);
+            entered = true;
             image = await _fetch(uri, token);
         }
 #pragma warning disable CA1031 // A poster that cannot be shown keeps the placeholder.
@@ -253,6 +307,13 @@ internal sealed class PosterLoader : IDisposable
 #pragma warning restore CA1031
         {
             return;
+        }
+        finally
+        {
+            if (entered)
+            {
+                ReleaseDownload();
+            }
         }
 
         // Continues on the UI thread: only the latest request of this picture box is shown.
@@ -270,6 +331,18 @@ internal sealed class PosterLoader : IDisposable
         SetImage(pictureBox, state, image, owned: true);
     }
 
+    private void ReleaseDownload()
+    {
+        try
+        {
+            _downloads.Release();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The loader was disposed while the download ran.
+        }
+    }
+
     private sealed class PosterState
     {
         public RequestSequence Requests { get; } = new();
@@ -278,4 +351,19 @@ internal sealed class PosterLoader : IDisposable
 
         public Image? Owned { get; set; }
     }
+}
+
+/// <summary>Outcome of <see cref="PosterLoader.TryDecode"/>.</summary>
+internal enum PosterDecodeResult
+{
+    Decoded = 0,
+
+    /// <summary>Not a PNG, JPEG, GIF or BMP file, or its header is cut short; nothing was decoded.</summary>
+    UnknownFormat = 1,
+
+    /// <summary>The declared size is beyond the limits; refused before any pixel was decoded.</summary>
+    TooLarge = 2,
+
+    /// <summary>The image data is damaged.</summary>
+    Invalid = 3,
 }
