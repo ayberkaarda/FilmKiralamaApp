@@ -31,6 +31,9 @@ internal static class AccountRules
     /// <summary>The name the original sign-up form kept for the shop's own admin account.</summary>
     private const string ReservedUserName = "admin";
 
+    /// <summary>Whether <paramref name="name"/> is the name the sign-up form keeps for the shop's own admin.</summary>
+    public static bool IsReserved(string? name) => string.Equals(name, ReservedUserName, StringComparison.OrdinalIgnoreCase);
+
     public static void RequireValidUserName(string name, bool allowReserved = false)
     {
         if (!InputRules.IsValidUserName(name))
@@ -38,7 +41,7 @@ internal static class AccountRules
             throw new BusinessRuleException(UserNameInvalid);
         }
 
-        if (!allowReserved && string.Equals(name, ReservedUserName, StringComparison.OrdinalIgnoreCase))
+        if (!allowReserved && IsReserved(name))
         {
             throw new BusinessRuleException(UserNameReserved);
         }
