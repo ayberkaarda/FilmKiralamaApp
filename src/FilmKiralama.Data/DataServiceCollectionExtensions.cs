@@ -43,6 +43,7 @@ public static class DataServiceCollectionExtensions
         services.AddSingleton<IUserRepository, UserRepository>();
         services.AddSingleton<IFilmRepository, FilmRepository>();
         services.AddSingleton<IRentalRepository, RentalRepository>();
+        services.AddSingleton<IReviewRepository, ReviewRepository>();
 
         // Time decisions follow the database's clock; registered after the business layer's default too.
         services.TryAddSingleton(TimeProvider.System);

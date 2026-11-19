@@ -17,6 +17,8 @@ public sealed class FilmDbContext(DbContextOptions<FilmDbContext> options) : DbC
 
     public DbSet<SetupKey> SetupKeys => Set<SetupKey>();
 
+    public DbSet<Review> Reviews => Set<Review>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);

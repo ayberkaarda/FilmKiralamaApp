@@ -252,6 +252,33 @@ internal sealed class FilmFieldsValidator : AbstractValidator<FilmFields>
 }
 
 /// <summary>
+/// A review: one to five stars and, optionally, a comment of at most
+/// <see cref="Reviews.ReviewPolicy.MaxCommentLength"/> characters of plain text.
+/// </summary>
+internal sealed class ReviewFieldsValidator : AbstractValidator<ReviewFields>
+{
+    internal const string RatingInvalid = "Puan 1 ile 5 arasında olmalıdır.";
+    internal const string CommentInvalid = "Yorum satır sonu, kontrol veya görünmeyen biçim karakterleri içeremez.";
+
+    internal static readonly string CommentTooLong = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Yorum en fazla {Reviews.ReviewPolicy.MaxCommentLength} karakter olabilir.");
+
+    public ReviewFieldsValidator()
+    {
+        ClassLevelCascadeMode = CascadeMode.Stop;
+        RuleLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(r => r.Rating)
+            .InclusiveBetween(Reviews.ReviewPolicy.MinRating, Reviews.ReviewPolicy.MaxRating).WithMessage(RatingInvalid);
+        RuleFor(r => r.Comment)
+            .Must(c => InputRules.IsPlainText(c!)).WithMessage(CommentInvalid)
+            .Must(c => c!.Normalize(System.Text.NormalizationForm.FormC).Length <= Reviews.ReviewPolicy.MaxCommentLength).WithMessage(_ => CommentTooLong)
+            .When(r => r.Comment is not null);
+    }
+}
+
+/// <summary>
 /// A rental: 1 to <see cref="RentalPolicy.MaxRentalDays"/> days, a positive daily price (a film without
 /// one cannot be rented) and a total the money column can hold.
 /// </summary>

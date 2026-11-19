@@ -63,6 +63,15 @@ public enum AuditEvent
 
     /// <summary>A sign-up used a user name, e-mail address or phone number that is taken; no account was created.</summary>
     RegistrationNotCompleted = 16,
+
+    /// <summary>A customer stored a new review or changed their review; both share the code.</summary>
+    ReviewSaved = 17,
+
+    /// <summary>A customer deleted their own review.</summary>
+    ReviewDeleted = 18,
+
+    /// <summary>An admin hid a review or showed it again.</summary>
+    ReviewModerated = 19,
 }
 
 /// <summary>Role of the account an <see cref="AuditEvent"/> concerns.</summary>
@@ -100,6 +109,9 @@ public static class AuditCodes
         AuditEvent.AccountChanged => "account.changed",
         AuditEvent.SessionRevoked => "access.session_revoked",
         AuditEvent.RegistrationNotCompleted => "auth.account.registration_not_completed",
+        AuditEvent.ReviewSaved => "review.saved",
+        AuditEvent.ReviewDeleted => "review.deleted",
+        AuditEvent.ReviewModerated => "review.moderated",
         _ => throw new ArgumentOutOfRangeException(nameof(auditEvent), auditEvent, "Unknown audit event."),
     };
 

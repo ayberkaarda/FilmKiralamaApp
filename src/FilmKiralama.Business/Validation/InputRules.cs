@@ -1,5 +1,7 @@
+using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace FilmKiralama.Business.Validation;
@@ -92,6 +94,36 @@ public static partial class InputRules
         && value.Length <= ImageUrlMaxLength
         && Uri.TryCreate(value, UriKind.Absolute, out var uri)
         && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+
+    /// <summary>
+    /// Text that shows as written wherever it is displayed: well-formed Unicode without control characters
+    /// (line breaks included), formatting characters (such as the right-to-left override or zero-width
+    /// characters, which can disguise text), line or paragraph separators, private use or unassigned
+    /// characters.
+    /// </summary>
+    public static bool IsPlainText(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+
+        for (var i = 0; i < value.Length;)
+        {
+            if (Rune.DecodeFromUtf16(value.AsSpan(i), out var rune, out var used) != OperationStatus.Done)
+            {
+                return false;
+            }
+
+            if (Rune.GetUnicodeCategory(rune) is UnicodeCategory.Control or UnicodeCategory.Format
+                or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator
+                or UnicodeCategory.PrivateUse or UnicodeCategory.OtherNotAssigned or UnicodeCategory.Surrogate)
+            {
+                return false;
+            }
+
+            i += used;
+        }
+
+        return true;
+    }
 
     [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
     private static partial Regex EmailPattern();

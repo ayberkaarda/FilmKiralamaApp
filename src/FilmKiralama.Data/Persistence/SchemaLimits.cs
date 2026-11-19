@@ -15,6 +15,9 @@ internal static class SchemaLimits
     public const int DirectorLength = 50;
     public const int ImageUrlLength = 255;
 
+    /// <summary>Longest review comment (NVARCHAR(500)).</summary>
+    public const int CommentLength = 500;
+
     /// <summary>Room for a PBKDF2 hash; the original column held plain text in 50 characters.</summary>
     public const int PasswordLength = 256;
 
@@ -54,6 +57,9 @@ internal static class SchemaLimits
 
     /// <summary>Only active rentals hold a copy; an account can rent the same film once at a time.</summary>
     public const string ActiveRentalFilter = "[Durum] = 0";
+
+    /// <summary>A rating is one to five stars.</summary>
+    public const string RatingCheck = "[Puan] >= 1 AND [Puan] <= 5";
 
     public const string EmailFilter = "[Eposta] IS NOT NULL";
     public const string PhoneFilter = "[Telefon] IS NOT NULL";
