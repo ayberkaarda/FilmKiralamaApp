@@ -319,6 +319,10 @@ public sealed class ThemeTests
             var number = Find<NumericUpDown>(panel, "nudAdet");
             var check = Find<ThemedCheckBox>(panel, "chkKiralamayaAcik");
             var date = Find<DateTimePicker>(reports, "dtpBaslangic");
+            using var catalog = TestForms.Catalog();
+            LayoutAssert.CreateHandles(catalog);
+            var add = catalog.Controls.Find("btnListeyeEkle", searchAllChildren: true).OfType<ThemedButton>().First();
+            Assert.Equal(add.Width, add.Height);
             Assert.NotNull(date.Region);
             Assert.Equal(ThemePalette.Light.Surface, list.BackColor);
             Assert.Equal(ThemePalette.Light.AccentSubtle, grid.DefaultCellStyle.SelectionBackColor);
@@ -342,6 +346,10 @@ public sealed class ThemeTests
             Assert.Equal(BorderStyle.FixedSingle, number.BorderStyle);
             Assert.False(UserPaints(check));
             Assert.Null(date.Region);
+
+            // The watchlist button shows its text on a row of its own; the cards grow and nothing overlaps.
+            Assert.True(add.Width > 2 * add.Height, $"The watchlist button is {add.Size} under high contrast.");
+            LayoutAssert.FitsInside(catalog);
             var (back, primary, _) = ThemedListBox.RowColors(Theme.Current, selected: true, RowTone.Neutral);
             Assert.Equal((SystemColors.Highlight, SystemColors.HighlightText), (back, primary));
 
@@ -357,6 +365,8 @@ public sealed class ThemeTests
             Assert.Equal(BorderStyle.None, box.BorderStyle);
             Assert.True(UserPaints(check));
             Assert.NotNull(date.Region);
+            Assert.Equal(add.Width, add.Height);
+            LayoutAssert.FitsInside(catalog);
 
             // Ending the subscription ends the refresh.
             watcher.Dispose();

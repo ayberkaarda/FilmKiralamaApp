@@ -18,7 +18,7 @@ internal interface IGridCard
 /// films does not make the window taller than the screen. The cards of a row share the row's height. While the
 /// grid has no cards it shows a message: loading, or why it is empty.
 /// </summary>
-internal sealed class CardGrid : Panel, IScrollsOwnContent
+internal sealed class CardGrid : Panel, IScrollsOwnContent, IThemeAware
 {
     private string _emptyText = string.Empty;
     private bool _loading;
@@ -70,6 +70,21 @@ internal sealed class CardGrid : Panel, IScrollsOwnContent
                 Invalidate();
             }
         }
+    }
+
+    /// <summary>
+    /// A palette change can change the cards' layout (under high contrast the watchlist button shows its text
+    /// on a row of its own), so every card is laid out again and the rows take their new heights.
+    /// </summary>
+    void IThemeAware.ApplyTheme(ThemeRemap remap)
+    {
+        foreach (Control card in Controls)
+        {
+            card.PerformLayout();
+        }
+
+        PerformLayout();
+        Invalidate(invalidateChildren: true);
     }
 
     /// <summary>The message the grid shows now instead of cards, or an empty text.</summary>
