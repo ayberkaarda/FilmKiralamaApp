@@ -33,6 +33,7 @@ internal static class UiExtensions
     /// <summary>
     /// Like <see cref="RunAsync"/>, but through <paramref name="operation"/>: while a run is pending a new
     /// call is ignored and <paramref name="controls"/> stay disabled, so a write cannot be started twice.
+    /// A run that starts clears the previous inline message of the screen.
     /// </summary>
     public static Task<bool> RunExclusiveAsync(
         this Form form,
@@ -44,7 +45,13 @@ internal static class UiExtensions
         ArgumentNullException.ThrowIfNull(operation);
         ArgumentNullException.ThrowIfNull(action);
 
-        return operation.RunAsync(() => form.RunAsync(action), controls);
+        return operation.RunAsync(
+            () =>
+            {
+                (form as IStatusSurface)?.ClearStatus();
+                return form.RunAsync(action);
+            },
+            controls);
     }
 
     /// <summary>Lets only digits (and editing keys) be typed.</summary>
@@ -152,6 +159,29 @@ internal static class UiExtensions
 
         grid.DefaultCellStyle.SelectionForeColor = SystemColors.HighlightText;
         grid.DefaultCellStyle.SelectionBackColor = SystemColors.Highlight;
+    }
+
+    /// <summary>Replaces the items of a list without selecting one, keeping the update to a single repaint.</summary>
+    public static void ReplaceItems<T>(this ListBox listBox, IEnumerable<T> items)
+    {
+        ArgumentNullException.ThrowIfNull(listBox);
+        ArgumentNullException.ThrowIfNull(items);
+
+        listBox.BeginUpdate();
+        try
+        {
+            listBox.Items.Clear();
+            foreach (var item in items)
+            {
+                listBox.Items.Add(item!);
+            }
+
+            listBox.SelectedIndex = -1;
+        }
+        finally
+        {
+            listBox.EndUpdate();
+        }
     }
 
     /// <summary>Replaces the items of a combo box, keeping the update to a single repaint.</summary>
