@@ -104,8 +104,9 @@ internal sealed class CardGrid : Panel, IScrollsOwnContent
 
     protected override void OnLayout(LayoutEventArgs levent)
     {
-        base.OnLayout(levent);
+        // The cards are placed first: the scroll range the base layout works out follows where they are.
         Arrange();
+        base.OnLayout(levent);
     }
 
     protected override void OnClientSizeChanged(EventArgs e)
