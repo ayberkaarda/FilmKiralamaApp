@@ -94,7 +94,7 @@ public sealed class ExclusiveWriteTests
         var films = new ControlledFilmService();
         var rentals = new ControlledRentalService();
         var prompts = new RecordingPrompts();
-        using var form = new KiralamaForm(films, rentals, Sessions.User, 1) { Prompts = prompts };
+        using var form = new KiralamaForm(films, rentals, new ControlledReviewService(), Sessions.User, 1) { Prompts = prompts };
         Assert.True(form.LoadFilmAsync().IsCompletedSuccessfully);
         Find<TextBox>(form, "txtGunSayisi").Text = "3";
 
@@ -115,7 +115,7 @@ public sealed class ExclusiveWriteTests
     public void Rent_DaysBeyondTheSettings_AreCappedBeforeTheQuote() => Run(() =>
     {
         var rentals = new ControlledRentalService();
-        using var form = new KiralamaForm(new ControlledFilmService(), rentals, Sessions.User, 1) { Prompts = new RecordingPrompts() };
+        using var form = new KiralamaForm(new ControlledFilmService(), rentals, new ControlledReviewService(), Sessions.User, 1) { Prompts = new RecordingPrompts() };
         Assert.True(form.LoadFilmAsync().IsCompletedSuccessfully);
         Find<TextBox>(form, "txtGunSayisi").Text = "999";
 
@@ -128,7 +128,7 @@ public sealed class ExclusiveWriteTests
     public void Return_EveryReturnButtonStaysDisabledUntilTheReturnEnds() => Run(() =>
     {
         var rentals = new ControlledRentalService();
-        using var form = new KullaniciProfil(rentals, new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
+        using var form = new KullaniciProfil(rentals, new ControlledReviewService(), new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
         Assert.True(form.LoadRentalsAsync().IsCompletedSuccessfully);
         Assert.Equal(2, form.ReturnButtons.Count);
 

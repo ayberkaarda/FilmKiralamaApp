@@ -1,31 +1,42 @@
+using FilmKiralama.Business.Reviews;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Domain.Entities;
 using FilmKiralama.UI.Infrastructure;
 
 namespace FilmKiralama.UI
 {
-    /// <summary>The customer's profile: own active rentals with their return, and the password change.</summary>
+    /// <summary>
+    /// The customer's profile: own active rentals with their return, the returned films the customer can
+    /// rate, and the password change.
+    /// </summary>
     public partial class KullaniciProfil : Form
     {
         private readonly IRentalService _rentals;
+        private readonly IReviewService _reviews;
         private readonly IFormFactory _forms;
         private readonly UserSession _session;
         private readonly ExclusiveOperation _return = new();
         private readonly RequestSequence _loads = new();
+        private readonly RequestSequence _reviewableLoads = new();
         private readonly Panel _scrollPanel;
+        private readonly ListBox _reviewable;
+        private readonly Button _rate;
 
-        public KullaniciProfil(IRentalService rentals, IFormFactory forms, UserSession session)
+        public KullaniciProfil(IRentalService rentals, IReviewService reviews, IFormFactory forms, UserSession session)
         {
             ArgumentNullException.ThrowIfNull(rentals);
+            ArgumentNullException.ThrowIfNull(reviews);
             ArgumentNullException.ThrowIfNull(forms);
             ArgumentNullException.ThrowIfNull(session);
 
             _rentals = rentals;
+            _reviews = reviews;
             _forms = forms;
             _session = session;
             Prompts = new MessageBoxPrompts(this);
 
             InitializeComponent();
+            ClientSize = new Size(ClientSize.Width, ClientSize.Height + 190);
             Icon = AppAssets.Icon;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
@@ -33,6 +44,7 @@ namespace FilmKiralama.UI
             MinimumSize = Size;
 
             BuildHeader();
+            (_reviewable, _rate) = BuildReviewPanel();
             _scrollPanel = new Panel
             {
                 Dock = DockStyle.Fill,
@@ -54,6 +66,9 @@ namespace FilmKiralama.UI
         /// <summary>The return buttons shown now, for tests.</summary>
         internal IReadOnlyList<Button> ReturnButtons { get; private set; } = [];
 
+        /// <summary>The returned films the customer can rate, as shown now.</summary>
+        internal IReadOnlyList<ReviewableFilm> ShownReviewable { get; private set; } = [];
+
         internal async Task LoadRentalsAsync()
         {
             var request = _loads.Next();
@@ -62,6 +77,36 @@ namespace FilmKiralama.UI
             {
                 ShowRentals(rentals);
             }
+        }
+
+        /// <summary>Loads the films the customer may rate; only the latest request is shown and nothing is selected.</summary>
+        internal async Task LoadReviewableAsync()
+        {
+            var request = _reviewableLoads.Next();
+            var films = await _reviews.GetReviewableAsync(_session);
+            if (!_reviewableLoads.IsLatest(request) || IsDisposed)
+            {
+                return;
+            }
+
+            ShownReviewable = films;
+            _reviewable.BeginUpdate();
+            try
+            {
+                _reviewable.Items.Clear();
+                foreach (var film in films)
+                {
+                    _reviewable.Items.Add(new ReviewableItem(film));
+                }
+
+                _reviewable.SelectedIndex = -1;
+            }
+            finally
+            {
+                _reviewable.EndUpdate();
+            }
+
+            _rate.Enabled = false;
         }
 
         /// <summary>
@@ -92,6 +137,9 @@ namespace FilmKiralama.UI
                         ? $"Film iade edildi. Gecikme ücreti: {DisplayFormat.Money(receipt.LateFee)}"
                         : "Film iade edildi.");
                     await LoadRentalsAsync();
+
+                    // A returned film can be rated now.
+                    await LoadReviewableAsync();
                 },
                 [.. ReturnButtons]);
             return returned;
@@ -100,7 +148,65 @@ namespace FilmKiralama.UI
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            await this.RunAsync(LoadRentalsAsync);
+            await this.RunAsync(async () =>
+            {
+                await LoadRentalsAsync();
+                await LoadReviewableAsync();
+            });
+        }
+
+        private (ListBox List, Button Rate) BuildReviewPanel()
+        {
+            var panel = new Panel { Name = "pnlDegerlendir", Dock = DockStyle.Bottom, Height = 190, BackColor = Color.FromArgb(240, 240, 240) };
+            var caption = new Label
+            {
+                Text = "Puan verebileceğiniz filmler (kiralayıp iade ettikleriniz)",
+                Location = new Point(20, 10),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 10, FontStyle.Bold),
+                ForeColor = Color.Black,
+            };
+            var list = new ListBox
+            {
+                Name = "lstPuanlanabilir",
+                Location = new Point(20, 36),
+                Size = new Size(600, 140),
+                Font = new Font("Segoe UI", 10),
+                IntegralHeight = false,
+            };
+            var rate = new Button
+            {
+                Name = "btnPuanVer",
+                Text = "Puan Ver / Düzenle",
+                Location = new Point(640, 36),
+                Size = new Size(180, 40),
+                Enabled = false,
+            };
+            list.SelectedIndexChanged += (_, _) => rate.Enabled = list.SelectedItem is ReviewableItem;
+            list.DoubleClick += async (_, _) => await RateSelectedAsync();
+            rate.Click += async (_, _) => await RateSelectedAsync();
+            panel.Controls.AddRange([caption, list, rate]);
+            Controls.Add(panel);
+            return (list, rate);
+        }
+
+        private async Task RateSelectedAsync()
+        {
+            if (_reviewable.SelectedItem is not ReviewableItem item)
+            {
+                return;
+            }
+
+            DialogResult result;
+            using (var form = _forms.Create<DegerlendirmeForm>(_session, item.Film))
+            {
+                result = form.ShowDialog(this);
+            }
+
+            if (result == DialogResult.OK)
+            {
+                await this.RunAsync(LoadReviewableAsync);
+            }
         }
 
         private Panel BuildHeader()

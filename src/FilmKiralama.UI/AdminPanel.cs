@@ -52,7 +52,35 @@ namespace FilmKiralama.UI
             pictureBox1.SizeMode = PictureBoxSizeMode.StretchImage;
             dataGridView1.UseReadOnlyList();
             btnGuncelle.Enabled = false;
+
+            // The panel buttons share the top row with the review moderation.
+            var x = btnAracDurum.Left;
+            foreach (var button in new[] { btnAracDurum, btnKullaniciPanel, btnKiralanlar })
+            {
+                button.SetBounds(x, button.Top, PanelButtonWidth, button.Height);
+                x += PanelButtonWidth + 8;
+            }
+
+            var reviews = new Button
+            {
+                Name = "btnYorumlar",
+                Text = "Yorumlar",
+                Bounds = new Rectangle(x, btnAracDurum.Top, PanelButtonWidth, btnAracDurum.Height),
+                Font = btnKiralanlar.Font,
+                BackColor = btnKiralanlar.BackColor,
+                ForeColor = btnKiralanlar.ForeColor,
+                FlatStyle = btnKiralanlar.FlatStyle,
+            };
+            reviews.Click += (_, _) =>
+            {
+                using var form = _forms.Create<YorumYonetimForm>(_session);
+                form.ShowDialog(this);
+            };
+            Controls.Add(reviews);
         }
+
+        /// <summary>Width of the buttons that open the other admin panels.</summary>
+        private const int PanelButtonWidth = 180;
 
         public bool SignedOut { get; private set; }
 

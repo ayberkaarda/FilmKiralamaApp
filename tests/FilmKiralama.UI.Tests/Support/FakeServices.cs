@@ -1,4 +1,5 @@
 using FilmKiralama.Business;
+using FilmKiralama.Business.Reviews;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Domain.Entities;
 using FilmKiralama.UI.Infrastructure;
@@ -153,6 +154,62 @@ internal sealed class ControlledRentalService : IRentalService
     public void CompleteRent() => _rent.SetResult(new RentalReceipt(11, LastQuote!.Total, LastQuote.StartsOn, LastQuote.DueOn));
 
     public void CompleteReturn() => _return.SetResult(new ReturnReceipt(0, 0m));
+}
+
+/// <summary>Review calls; reviews of a film come from <see cref="FilmReviews"/>, writes stay pending until the test completes them.</summary>
+internal sealed class ControlledReviewService : IReviewService
+{
+    private TaskCompletionSource _save = new();
+    private TaskCompletionSource _hide = new();
+
+    public FilmReviews FilmReviews { get; set; } = new(null, 0, []);
+
+    public List<ReviewableFilm> Reviewable { get; } = [new(1, "Sisli Liman", "Gerilim", 2019, null, null), new(2, "Son Vapur", "Dram", 2015, 7, 4)];
+
+    public OwnReview? Own { get; set; }
+
+    public List<(bool HiddenOnly, int Page, TaskCompletionSource<PagedResult<ReviewDetails>> Answer)> ListRequests { get; } = [];
+
+    public List<ReviewInput> Saved { get; } = [];
+
+    public int HideCalls { get; private set; }
+
+    public static ReviewDetails Review(int id, bool hidden = false) =>
+        new(id, 1, "Sisli Liman", 2, "ornek", 4, "Yorum " + id, hidden, new DateTime(2026, 3, 1, 10, 0, 0, DateTimeKind.Utc));
+
+    public Task SaveAsync(UserSession session, int filmId, ReviewInput input, CancellationToken cancellationToken = default)
+    {
+        Saved.Add(input);
+        _save = new TaskCompletionSource();
+        return _save.Task;
+    }
+
+    public Task<OwnReview?> GetOwnAsync(UserSession session, int filmId, CancellationToken cancellationToken = default) => Task.FromResult(Own);
+
+    public Task DeleteOwnAsync(UserSession session, int reviewId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public Task<FilmReviews> GetFilmReviewsAsync(UserSession session, int filmId, CancellationToken cancellationToken = default) => Task.FromResult(FilmReviews);
+
+    public Task<IReadOnlyList<ReviewableFilm>> GetReviewableAsync(UserSession session, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<ReviewableFilm>>([.. Reviewable]);
+
+    public Task<PagedResult<ReviewDetails>> GetAllAsync(UserSession session, bool hiddenOnly, int page, CancellationToken cancellationToken = default)
+    {
+        var answer = new TaskCompletionSource<PagedResult<ReviewDetails>>();
+        ListRequests.Add((hiddenOnly, page, answer));
+        return answer.Task;
+    }
+
+    public Task SetHiddenAsync(UserSession session, int reviewId, bool hidden, CancellationToken cancellationToken = default)
+    {
+        HideCalls++;
+        _hide = new TaskCompletionSource();
+        return _hide.Task;
+    }
+
+    public void CompleteSave() => _save.SetResult();
+
+    public void CompleteHide() => _hide.SetResult();
 }
 
 /// <summary>Answers confirmations with yes and records every message instead of showing a dialog.</summary>
