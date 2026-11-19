@@ -1,4 +1,5 @@
 using FilmKiralama.Business.Auditing;
+using FilmKiralama.Business.Reports;
 using FilmKiralama.Business.Reviews;
 using FilmKiralama.Business.Security;
 using FilmKiralama.Business.Services;
@@ -45,6 +46,7 @@ public static class BusinessServiceCollectionExtensions
         services.AddSingleton<IValidator<RentalQuoteInput>, RentalQuoteInputValidator>();
         services.AddSingleton<IValidator<ReviewFields>, ReviewFieldsValidator>();
         services.AddSingleton<IValidator<CatalogQuery>, CatalogQueryValidator>();
+        services.AddSingleton<IValidator<ReportRange>, ReportRangeValidator>();
         services.AddSingleton<SetupKeyGate>();
         services.AddSingleton<IAuthService, AuthService>();
         services.AddSingleton<ISetupService, SetupService>();
@@ -53,6 +55,8 @@ public static class BusinessServiceCollectionExtensions
         services.AddSingleton<IAccountService, AccountService>();
         services.AddSingleton<IReviewService, ReviewService>();
         services.AddSingleton<IWatchlistService, WatchlistService>();
+        services.AddSingleton<IReportService, ReportService>();
+        services.AddSingleton<IRecommendationService, RecommendationService>();
         return services;
     }
 }

@@ -197,6 +197,28 @@ namespace FilmKiralama.UI
             };
             header.Controls.Add(watchlist);
 
+            var recommendations = new Button
+            {
+                Name = "btnOneriler",
+                Text = "Öneriler",
+                Size = new Size(120, 30),
+                Location = new Point(header.Width - 490, 10),
+                BackColor = Color.DarkSlateBlue,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+            };
+            recommendations.Click += async (_, _) =>
+            {
+                using (var form = _forms.Create<OnerilerForm>(_session))
+                {
+                    form.ShowDialog(this);
+                }
+
+                // A rental from the recommendations takes a copy off the shelf.
+                await this.RunAsync(RefreshAsync);
+            };
+            header.Controls.Add(recommendations);
+
             var signOut = new Button
             {
                 Text = "Çıkış Yap",

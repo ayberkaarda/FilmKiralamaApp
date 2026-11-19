@@ -310,6 +310,25 @@ internal sealed class CatalogQueryValidator : AbstractValidator<CatalogQuery>
     }
 }
 
+/// <summary>A report period: the first day not after the last, at most <see cref="Reports.ReportPolicy.MaxRangeDays"/> days.</summary>
+internal sealed class ReportRangeValidator : AbstractValidator<Reports.ReportRange>
+{
+    internal const string Reversed = "Başlangıç tarihi bitiş tarihinden sonra olamaz.";
+
+    internal static readonly string TooLong = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Rapor en fazla {Reports.ReportPolicy.MaxRangeDays} günü kapsayabilir.");
+
+    public ReportRangeValidator()
+    {
+        ClassLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(r => r)
+            .Must(r => r.From <= r.To).WithName(nameof(Reports.ReportRange)).WithMessage(Reversed)
+            .Must(r => r.To.DayNumber - r.From.DayNumber < Reports.ReportPolicy.MaxRangeDays).WithName(nameof(Reports.ReportRange)).WithMessage(_ => TooLong);
+    }
+}
+
 /// <summary>
 /// A review: one to five stars and, optionally, a comment of at most
 /// <see cref="Reviews.ReviewPolicy.MaxCommentLength"/> characters of plain text.

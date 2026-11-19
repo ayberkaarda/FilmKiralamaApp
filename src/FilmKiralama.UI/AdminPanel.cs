@@ -83,6 +83,23 @@ namespace FilmKiralama.UI
             };
             Controls.Add(reviews);
 
+            var reports = new Button
+            {
+                Name = "btnRaporlar",
+                Text = "Raporlar",
+                Bounds = new Rectangle(reviews.Right + 8, btnAracDurum.Top, PanelButtonWidth, btnAracDurum.Height),
+                Font = btnKiralanlar.Font,
+                BackColor = btnKiralanlar.BackColor,
+                ForeColor = btnKiralanlar.ForeColor,
+                FlatStyle = btnKiralanlar.FlatStyle,
+            };
+            reports.Click += (_, _) =>
+            {
+                using var form = _forms.Create<RaporlarForm>(_session);
+                form.ShowDialog(this);
+            };
+            Controls.Add(reports);
+
             // The search row above the film grid and the pages below it.
             _search = new CatalogSearchBar(new Point(dataGridView1.Left, 84), Color.White, availableOnly: false);
             Controls.Add(_search);
