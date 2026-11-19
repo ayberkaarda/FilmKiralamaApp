@@ -90,7 +90,7 @@ namespace FilmKiralama.UI
                 _return,
                 async () =>
                 {
-                    var preview = _rentals.PreviewReturn(rental);
+                    var preview = await _rentals.PreviewReturnAsync(rental);
                     var question = preview.LateFee > 0m
                         ? $"\"{rental.FilmTitle}\" {preview.OverdueDays} gün gecikmeli. Gecikme ücreti: {DisplayFormat.Money(preview.LateFee)}\n\nİade alınsın mı?"
                         : $"\"{rental.FilmTitle}\" iade alınsın mı?";

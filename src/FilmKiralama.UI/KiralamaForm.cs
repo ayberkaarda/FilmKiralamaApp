@@ -133,7 +133,7 @@ namespace FilmKiralama.UI
                 _rent,
                 async () =>
                 {
-                    var quote = _rentals.Quote(film.Id, film.DailyPrice, _days);
+                    var quote = await _rentals.QuoteAsync(film.Id, film.DailyPrice, _days);
                     var question =
                         $"Toplam Tutar: {DisplayFormat.Money(quote.Total)}\n"
                         + $"Kiralama Başlangıç Tarihi: {DisplayFormat.Date(quote.StartsOn)}\n"

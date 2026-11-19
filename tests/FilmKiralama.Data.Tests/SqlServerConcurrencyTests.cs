@@ -221,7 +221,7 @@ public sealed class SqlServerConcurrencyTests
             () => films.AddAsync(demoted, new FilmInput("Yeni", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 1, true), Ct),
             () => films.DeleteAsync(demoted, ThreeCopiesFilmId, Ct),
             () => rentals.ReturnAsync(demoted, rental.RentalId, Ct),
-            () => rentals.RentAsync(customer, rentals.Quote(ThreeCopiesFilmId, 25m, 1), Ct),
+            async () => await rentals.RentAsync(customer, await rentals.QuoteAsync(ThreeCopiesFilmId, 25m, 1, Ct), Ct),
         ];
         foreach (var operation in refused)
         {

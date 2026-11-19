@@ -74,4 +74,41 @@ public sealed class SqlServerClockTests
             Ct,
             ("@id", receipt.RentalId)));
     }
+
+    /// <summary>
+    /// On a computer whose clock is months behind, the rental confirmation shows the database's start and
+    /// due day and the return confirmation the late fee the database's day gives: what the customer
+    /// confirms is what is stored and charged.
+    /// </summary>
+    [Fact]
+    public async Task Confirmations_OnAComputerWithAWrongClock_ShowWhatIsStoredAndCharged()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var behind = database.BuildServices(demo: true);
+        await behind.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var customer = await RegisterAsync(behind, "onay", 1);
+        var rentals = behind.GetRequiredService<IRentalService>();
+        var film = await behind.GetRequiredService<IFilmService>().GetAsync(customer, ThreeCopiesFilmId, Ct);
+
+        var quote = await rentals.QuoteAsync(ThreeCopiesFilmId, film.DailyPrice, 2, Ct);
+        var receipt = await rentals.RentAsync(customer, quote, Ct);
+
+        Assert.NotEqual(Today, quote.StartsOn);
+        Assert.Equal((quote.StartsOn, quote.DueOn, quote.Total), (receipt.StartsOn, receipt.DueOn, receipt.Total));
+        Assert.Equal(1, await database.ScalarAsync(
+            "SELECT COUNT(*) FROM dbo.Kiralama WHERE KiralamaID = @id AND KiralamaTarihi = CAST(SYSUTCDATETIME() AS date) AND PlanlananIadeTarihi = DATEADD(DAY, 2, CAST(SYSUTCDATETIME() AS date))",
+            Ct,
+            ("@id", receipt.RentalId)));
+
+        await database.ExecuteAsync(
+            "UPDATE dbo.Kiralama SET KiralamaTarihi = DATEADD(DAY, -6, CAST(SYSUTCDATETIME() AS date)), PlanlananIadeTarihi = DATEADD(DAY, -4, CAST(SYSUTCDATETIME() AS date)) WHERE KiralamaID = @id",
+            Ct,
+            ("@id", receipt.RentalId));
+        var active = Assert.Single(await rentals.GetMyActiveRentalsAsync(customer, Ct));
+        var preview = await rentals.PreviewReturnAsync(active, Ct);
+        var returned = await rentals.ReturnAsync(customer, receipt.RentalId, Ct);
+
+        Assert.Equal(new ReturnPreview(4, 4 * DailyLateFee), preview);
+        Assert.Equal((preview.OverdueDays, preview.LateFee), (returned.OverdueDays, returned.LateFee));
+    }
 }

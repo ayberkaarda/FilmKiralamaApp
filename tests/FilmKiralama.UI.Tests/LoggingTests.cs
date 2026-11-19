@@ -217,10 +217,10 @@ public sealed partial class LoggingTests : IDisposable
         var customer = await auth.SignInAsync(CustomerName, CustomerPassword, Ct);
 
         var film = await films.GetAsync(customer, filmId, Ct);
-        var rental = await rentals.RentAsync(customer, rentals.Quote(filmId, film.DailyPrice, 3), Ct);
+        var rental = await rentals.RentAsync(customer, await rentals.QuoteAsync(filmId, film.DailyPrice, 3, Ct), Ct);
         await auth.RegisterAsync("baska.musteri", CustomerPassword, "baska@example.com", "5559876543", Ct);
         var other = await auth.SignInAsync("baska.musteri", CustomerPassword, Ct);
-        await app.AttemptAsync(() => rentals.RentAsync(other, rentals.Quote(filmId, film.DailyPrice, 2), Ct)); // last copy gone
+        await app.AttemptAsync(async () => await rentals.RentAsync(other, await rentals.QuoteAsync(filmId, film.DailyPrice, 2, Ct), Ct)); // last copy gone
         await app.AttemptAsync(() => rentals.ReturnAsync(other, rental.RentalId, Ct)); // not theirs
         await app.AttemptAsync(() => films.GetAllAsync(other, Ct)); // admin only
         app.Clock.Advance(TimeSpan.FromDays(5));
@@ -342,8 +342,8 @@ public sealed partial class LoggingTests : IDisposable
         await auth.RegisterAsync("baska.musteri", CustomerPassword, "baska@example.com", "5559876543", Ct);
         var owner = await auth.SignInAsync(CustomerName, CustomerPassword, Ct);
         var other = await auth.SignInAsync("baska.musteri", CustomerPassword, Ct);
-        var active = await rentals.RentAsync(owner, rentals.Quote(filmId, 10m, 2), Ct);
-        var returned = await rentals.RentAsync(other, rentals.Quote(filmId, 10m, 2), Ct);
+        var active = await rentals.RentAsync(owner, await rentals.QuoteAsync(filmId, 10m, 2, Ct), Ct);
+        var returned = await rentals.RentAsync(other, await rentals.QuoteAsync(filmId, 10m, 2, Ct), Ct);
         await rentals.ReturnAsync(other, returned.RentalId, Ct);
         app.CloseAndRead();
 
@@ -400,7 +400,7 @@ public sealed partial class LoggingTests : IDisposable
         await films.SearchAllAsync(admin, new CatalogQuery(Title: FilmTitle), Ct);
         await app.AttemptAsync(() => reviews.SaveAsync(customer, filmId, new Business.Reviews.ReviewInput(5, Comment), Ct)); // not returned yet
         await watchlist.AddAsync(customer, filmId, Ct);
-        var rental = await rentals.RentAsync(customer, rentals.Quote(filmId, 37.25m, 2), Ct);
+        var rental = await rentals.RentAsync(customer, await rentals.QuoteAsync(filmId, 37.25m, 2, Ct), Ct);
         app.Clock.Advance(TimeSpan.FromDays(4));
         await rentals.ReturnAsync(customer, rental.RentalId, Ct);
         await reviews.SaveAsync(customer, filmId, new Business.Reviews.ReviewInput(5, Comment), Ct);
@@ -450,7 +450,7 @@ public sealed partial class LoggingTests : IDisposable
         var second = await app.Get<IFilmService>().AddAsync(admin, new FilmInput("İkinci Film", "Dram", "2020", Director, "10", null, About, 2, true), Ct);
         foreach (var watched in new[] { filmId, second })
         {
-            var rental = await rentals.RentAsync(owner, rentals.Quote(watched, 10m, 2), Ct);
+            var rental = await rentals.RentAsync(owner, await rentals.QuoteAsync(watched, 10m, 2, Ct), Ct);
             await rentals.ReturnAsync(owner, rental.RentalId, Ct);
         }
 

@@ -24,10 +24,11 @@ public interface IRentalService
     RentalPolicy Policy { get; }
 
     /// <summary>
-    /// Price and dates of renting <paramref name="days"/> days from today, at the given daily price, for
-    /// the confirmation. The rental itself works the dates out again from the database's clock.
+    /// Price and dates of renting <paramref name="days"/> days from today by the database's clock, at the
+    /// given daily price, for the confirmation. The rental itself works the dates out again, from the same
+    /// clock.
     /// </summary>
-    RentalQuote Quote(int filmId, decimal dailyPrice, int days);
+    Task<RentalQuote> QuoteAsync(int filmId, decimal dailyPrice, int days, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Rents one copy of a film for the signed-in account. Refused when the film has no copy left, when the
@@ -41,8 +42,8 @@ public interface IRentalService
     /// <summary>Every active rental that matches <paramref name="filter"/> (admin only).</summary>
     Task<IReadOnlyList<RentalDetails>> GetActiveRentalsAsync(UserSession session, FilmFilter filter, CancellationToken cancellationToken = default);
 
-    /// <summary>The late fee a return today would cost, by the computer's clock; the return decides by the database's.</summary>
-    ReturnPreview PreviewReturn(RentalDetails rental);
+    /// <summary>The late fee a return today would cost, by the database's clock, which the return also uses.</summary>
+    Task<ReturnPreview> PreviewReturnAsync(RentalDetails rental, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Returns an active rental and records its late fee. A user can return only their own rentals; a
@@ -68,7 +69,13 @@ internal sealed class RentalService(
 
     public RentalPolicy Policy => policy;
 
-    public RentalQuote Quote(int filmId, decimal dailyPrice, int days) => QuoteFrom(timeProvider.Today(), filmId, dailyPrice, days);
+    public async Task<RentalQuote> QuoteAsync(int filmId, decimal dailyPrice, int days, CancellationToken cancellationToken = default)
+    {
+        // The input is checked before the database is asked for the time.
+        quoteValidator.ValidateOrThrow(new RentalQuoteInput(days, dailyPrice));
+        var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
+        return QuoteFrom(today, filmId, dailyPrice, days);
+    }
 
     public async Task<RentalReceipt> RentAsync(UserSession session, RentalQuote quote, CancellationToken cancellationToken = default)
     {
@@ -114,11 +121,11 @@ internal sealed class RentalService(
         return audit.AsActorAsync(session, () => rentals.GetActiveAsync(new RentalActor(session.UserId, AsAdmin: true), filter, cancellationToken));
     }
 
-    public ReturnPreview PreviewReturn(RentalDetails rental)
+    public async Task<ReturnPreview> PreviewReturnAsync(RentalDetails rental, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(rental);
 
-        var today = timeProvider.Today();
+        var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
         var days = LateFeeCalculator.OverdueDays(rental.DueOn, today);
         return new ReturnPreview(days, LateFeeCalculator.LateFee(days, policy.DailyLateFee));
     }

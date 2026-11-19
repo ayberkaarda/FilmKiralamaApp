@@ -154,8 +154,8 @@ internal sealed class ControlledRentalService : IRentalService
     public static RentalDetails Rental(int id) =>
         new(id, 1, "Sisli Liman", "Gerilim", 2019, "Ada Örnek", null, 2, "ornek", new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 4), 37.5m, RentalStatus.Active);
 
-    public RentalQuote Quote(int filmId, decimal dailyPrice, int days) =>
-        new(filmId, days, dailyPrice, dailyPrice * days, new DateOnly(2026, 3, 2), new DateOnly(2026, 3, 2).AddDays(days));
+    public Task<RentalQuote> QuoteAsync(int filmId, decimal dailyPrice, int days, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new RentalQuote(filmId, days, dailyPrice, dailyPrice * days, new DateOnly(2026, 3, 2), new DateOnly(2026, 3, 2).AddDays(days)));
 
     public Task<RentalReceipt> RentAsync(UserSession session, RentalQuote quote, CancellationToken cancellationToken = default)
     {
@@ -171,7 +171,7 @@ internal sealed class ControlledRentalService : IRentalService
     public Task<IReadOnlyList<RentalDetails>> GetActiveRentalsAsync(UserSession session, FilmFilter filter, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<RentalDetails>>([.. Rentals]);
 
-    public ReturnPreview PreviewReturn(RentalDetails rental) => new(0, 0m);
+    public Task<ReturnPreview> PreviewReturnAsync(RentalDetails rental, CancellationToken cancellationToken = default) => Task.FromResult(new ReturnPreview(0, 0m));
 
     public Task<ReturnReceipt> ReturnAsync(UserSession session, int rentalId, CancellationToken cancellationToken = default)
     {

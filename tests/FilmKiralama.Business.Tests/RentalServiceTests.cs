@@ -20,9 +20,9 @@ public sealed class RentalServiceTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
-    public void Quote_IsTheDailyPriceTimesTheDaysFromToday()
+    public async Task Quote_IsTheDailyPriceTimesTheDaysFromToday()
     {
-        var quote = Service().Quote(3, 12.5m, 4);
+        var quote = await Service().QuoteAsync(3, 12.5m, 4, Ct);
 
         Assert.Equal(50m, quote.Total);
         Assert.Equal(Today, quote.StartsOn);
@@ -33,19 +33,19 @@ public sealed class RentalServiceTests
     [InlineData(0)]
     [InlineData(-1)]
     [InlineData(31)]
-    public void Quote_DaysOutsideTheSettings_AreRefused(int days)
+    public async Task Quote_DaysOutsideTheSettings_AreRefused(int days)
     {
-        var error = Assert.Throws<BusinessRuleException>(() => Service().Quote(3, 12.5m, days));
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().QuoteAsync(3, 12.5m, days, Ct));
 
         Assert.Equal("Gün sayısı 1 ile 30 arasında olmalıdır.", error.Message);
     }
 
     [Fact]
-    public void Quote_TotalBeyondTheMoneyColumn_IsRefused()
+    public async Task Quote_TotalBeyondTheMoneyColumn_IsRefused()
     {
         _policy = new RentalPolicy { MaxRentalDays = 3650 };
 
-        Assert.Throws<BusinessRuleException>(() => Service().Quote(3, 99_999_999m, 2));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => Service().QuoteAsync(3, 99_999_999m, 2, Ct));
     }
 
     [Fact]
@@ -75,7 +75,7 @@ public sealed class RentalServiceTests
     {
         _rentals.Setup(r => r.RentAsync(It.IsAny<RentalRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new RentResult(outcome, 0));
 
-        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().RentAsync(Sessions.User, Service().Quote(3, 10m, 1), Ct));
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(async () => await Service().RentAsync(Sessions.User, await Service().QuoteAsync(3, 10m, 1, Ct), Ct));
 
         Assert.Equal(message, error.Message);
     }
@@ -113,7 +113,7 @@ public sealed class RentalServiceTests
         _rentals.Setup(r => r.RentAsync(It.IsAny<RentalRequest>(), It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
 
         var returned = await Assert.ThrowsAsync<AccessDeniedException>(() => Service().ReturnAsync(Sessions.Admin, 9, Ct));
-        var rented = await Assert.ThrowsAsync<AccessDeniedException>(() => Service().RentAsync(Sessions.User, Service().Quote(3, 10m, 1), Ct));
+        var rented = await Assert.ThrowsAsync<AccessDeniedException>(async () => await Service().RentAsync(Sessions.User, await Service().QuoteAsync(3, 10m, 1, Ct), Ct));
 
         Assert.Equal(AccessDeniedException.SessionRevokedMessage, returned.Message);
         Assert.Equal(AccessDeniedException.SessionRevokedMessage, rented.Message);
@@ -154,7 +154,7 @@ public sealed class RentalServiceTests
         _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false), databaseDay, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ReturnResult(ReturnOutcome.Returned, Today, 22.5m));
 
-        var receipt = await Service().RentAsync(Sessions.User, Service().Quote(3, 10m, 2), Ct);
+        var receipt = await Service().RentAsync(Sessions.User, await Service().QuoteAsync(3, 10m, 2, Ct), Ct);
         var returned = await Service().ReturnAsync(Sessions.User, 9, Ct);
 
         Assert.Equal(databaseDay, sent!.RentedOn);
@@ -163,11 +163,29 @@ public sealed class RentalServiceTests
     }
 
     [Fact]
-    public void PreviewReturn_ShowsTodaysLateFee()
+    public async Task PreviewReturn_ShowsTodaysLateFee()
     {
         var rental = new RentalDetails(9, 3, "Sisli Liman", "Gerilim", 2019, "Ada Örnek", null, 2, "ornek", Today.AddDays(-10), Today.AddDays(-2), 20m, RentalStatus.Active);
 
-        Assert.Equal(new ReturnPreview(2, 15m), Service().PreviewReturn(rental));
+        Assert.Equal(new ReturnPreview(2, 15m), await Service().PreviewReturnAsync(rental, Ct));
+    }
+
+    /// <summary>
+    /// The computer's clock is three days behind the database's: the dates and the late fee the
+    /// confirmations show are the database's, the same that the rental and the return then store.
+    /// </summary>
+    [Fact]
+    public async Task QuoteAndPreview_UseTheDatabaseClockNotTheComputers()
+    {
+        var databaseDay = Today.AddDays(3);
+        _clock = new TimeProviderClock(new FakeTimeProvider(new DateTimeOffset(2026, 3, 5, 10, 0, 0, TimeSpan.Zero)));
+        var rental = new RentalDetails(9, 3, "Sisli Liman", "Gerilim", 2019, "Ada Örnek", null, 2, "ornek", Today.AddDays(-2), Today, 20m, RentalStatus.Active);
+
+        var quote = await Service().QuoteAsync(3, 10m, 2, Ct);
+        var preview = await Service().PreviewReturnAsync(rental, Ct);
+
+        Assert.Equal((databaseDay, databaseDay.AddDays(2)), (quote.StartsOn, quote.DueOn));
+        Assert.Equal(new ReturnPreview(3, 22.5m), preview);
     }
 
     [Fact]
