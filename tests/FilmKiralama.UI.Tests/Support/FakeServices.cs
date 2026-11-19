@@ -297,6 +297,11 @@ internal sealed class ControlledReportService : IReportService
 
     public bool HoldExports { get; set; }
 
+    /// <summary>How often the screen reported a saved file.</summary>
+    public int RecordedExports { get; private set; }
+
+    public void RecordExport(UserSession session) => RecordedExports++;
+
     public Task<IReadOnlyList<RentalCountRow>> GetMostRentedAsync(UserSession session, ReportRange range, CancellationToken cancellationToken = default)
     {
         var answer = new TaskCompletionSource<IReadOnlyList<RentalCountRow>>();

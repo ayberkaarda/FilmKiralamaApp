@@ -54,9 +54,13 @@ public interface IReportService
 
     /// <summary>
     /// The report <paramref name="kind"/> for <paramref name="range"/> (ignored for the overdue report) as
-    /// CSV, with a file name made of the report and the dates only.
+    /// CSV, with a file name made of the report and the dates only. Nothing is recorded: the screen calls
+    /// <see cref="RecordExport"/> once the file is saved.
     /// </summary>
     Task<ExportFile> ExportCsvAsync(UserSession session, ReportKind kind, ReportRange range, CancellationToken cancellationToken = default);
+
+    /// <summary>Records that an exported report was saved to a file (admin only).</summary>
+    void RecordExport(UserSession session);
 }
 
 internal sealed class ReportService(
@@ -78,20 +82,8 @@ internal sealed class ReportService(
         return audit.AsActorAsync(session, () => reports.GetMostRentedAsync(session.UserId, range.From, range.To, ReportPolicy.TopFilms, cancellationToken));
     }
 
-    public async Task<IReadOnlyList<OverdueReportRow>> GetOverdueAsync(UserSession session, CancellationToken cancellationToken = default)
-    {
-        Access.RequireAdmin(session, audit);
-        var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
-        var rows = await audit.AsActorAsync(session, () => reports.GetOverdueAsync(session.UserId, today, cancellationToken)).ConfigureAwait(false);
-        return
-        [
-            .. rows.Select(r =>
-            {
-                var days = LateFeeCalculator.OverdueDays(r.DueOn, today);
-                return new OverdueReportRow(r, days, LateFeeCalculator.LateFee(days, policy.DailyLateFee));
-            }),
-        ];
-    }
+    public async Task<IReadOnlyList<OverdueReportRow>> GetOverdueAsync(UserSession session, CancellationToken cancellationToken = default) =>
+        (await GetOverdueOnAsync(session, cancellationToken).ConfigureAwait(false)).Rows;
 
     public async Task<LateFeeReport> GetLateFeesAsync(UserSession session, ReportRange range, CancellationToken cancellationToken = default)
     {
@@ -114,8 +106,7 @@ internal sealed class ReportService(
                 name = "en-cok-kiralananlar-" + Period(range);
                 break;
             case ReportKind.Overdue:
-                var overdue = await GetOverdueAsync(session, cancellationToken).ConfigureAwait(false);
-                var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
+                var (today, overdue) = await GetOverdueOnAsync(session, cancellationToken).ConfigureAwait(false);
                 content = ReportCsv.Write(
                     OverdueHeaders,
                     overdue.Select(r => (IReadOnlyList<string>)
@@ -137,8 +128,29 @@ internal sealed class ReportService(
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown report.");
         }
 
-        audit.Record(AuditEvent.ReportExported, AuditRole.Admin);
         return new ExportFile(name + ".csv", content);
+    }
+
+    public void RecordExport(UserSession session)
+    {
+        Access.RequireAdmin(session, audit);
+        audit.Record(AuditEvent.ReportExported, AuditRole.Admin);
+    }
+
+    /// <summary>The overdue rentals and the database's day they were counted on, read once.</summary>
+    private async Task<(DateOnly Today, IReadOnlyList<OverdueReportRow> Rows)> GetOverdueOnAsync(UserSession session, CancellationToken cancellationToken)
+    {
+        Access.RequireAdmin(session, audit);
+        var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
+        var rows = await audit.AsActorAsync(session, () => reports.GetOverdueAsync(session.UserId, today, cancellationToken)).ConfigureAwait(false);
+        return (today,
+        [
+            .. rows.Select(r =>
+            {
+                var days = LateFeeCalculator.OverdueDays(r.DueOn, today);
+                return new OverdueReportRow(r, days, LateFeeCalculator.LateFee(days, policy.DailyLateFee));
+            }),
+        ]);
     }
 
     private void Check(ReportRange range)

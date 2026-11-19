@@ -165,6 +165,9 @@ namespace FilmKiralama.UI
                     }
 
                     await ExportFileWriter.WriteAsync(path, file.Content);
+
+                    // Recorded only once the file is on the disk.
+                    _reports.RecordExport(_session);
                     Prompts.Inform("Rapor kaydedildi.");
                 },
                 _csv,

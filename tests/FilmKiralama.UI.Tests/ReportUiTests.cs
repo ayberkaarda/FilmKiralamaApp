@@ -33,6 +33,7 @@ public sealed class ReportUiTests : IDisposable
         Assert.True(form.ExportCsvAsync().Result);
 
         Assert.Equal([(ReportKind.MostRented, shown)], reports.Exports);
+        Assert.Equal(1, reports.RecordedExports);
         Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF, (byte)'a', (byte)';', (byte)'b' }, File.ReadAllBytes(path));
         Assert.Equal(["rapor.csv"], Directory.GetFiles(_directory).Select(Path.GetFileName));
     });
@@ -71,6 +72,7 @@ public sealed class ReportUiTests : IDisposable
 
         Assert.Empty(Directory.GetFiles(_directory));
         Assert.Empty(prompts.Messages);
+        Assert.Equal(0, reports.RecordedExports);
     });
 
     /// <summary>Two loads answered out of order show the later one; the overdue report has no period.</summary>

@@ -412,6 +412,7 @@ public sealed partial class LoggingTests : IDisposable
         var range = new Business.Reports.ReportRange(new DateOnly(2031, 3, 1), new DateOnly(2031, 3, 31));
         await reports.GetMostRentedAsync(admin, range, Ct);
         await reports.ExportCsvAsync(admin, Business.Reports.ReportKind.LateFees, range, Ct);
+        reports.RecordExport(admin);
         await app.AttemptAsync(() => reports.GetOverdueAsync(customer, Ct)); // admin only
         await reviews.DeleteOwnAsync(customer, own.Id, Ct);
 

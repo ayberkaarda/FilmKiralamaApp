@@ -126,7 +126,41 @@ public sealed class ReportServiceTests
         Assert.Equal("\"3\";\"Şeker \"\"Tadında\"\"; Çay\";\"ayşe\";\"02.03.2026\";\"03.03.2026\";\"10,00\"", lines[3]);
         Assert.Equal("\"\";\"\";\"\";\"\";\"Toplam\";\"40,50\"", lines[4]);
         Assert.Equal("gecikme-ucretleri-20260301-20260331.csv", file.SuggestedName);
-        Assert.Equal(["report.exported admin"], _audit.Entries);
+
+        // Nothing is exported until the file is saved.
+        Assert.Empty(_audit.Entries);
+    }
+
+    /// <summary>An export is recorded only when the screen reports the file saved, and only for an admin.</summary>
+    [Fact]
+    public void RecordExport_IsForAdminsAndWritesTheExportCode()
+    {
+        Assert.Throws<AccessDeniedException>(() => Service().RecordExport(Sessions.User));
+        Service().RecordExport(Sessions.Admin);
+
+        Assert.Equal(["access.denied user", "report.exported admin"], _audit.Entries);
+    }
+
+    /// <summary>
+    /// The overdue export reads the database's day once: around midnight the file name has the day the
+    /// rows were counted on.
+    /// </summary>
+    [Fact]
+    public async Task Csv_Overdue_NamesTheFileWithTheDayItsRowsWereCountedOn()
+    {
+        var clock = new Mock<IClock>(MockBehavior.Strict);
+        clock.SetupSequence(c => c.GetUtcNowAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DateTime(2026, 3, 5, 23, 59, 59, DateTimeKind.Utc))
+            .ReturnsAsync(new DateTime(2026, 3, 6, 0, 0, 1, DateTimeKind.Utc));
+        _reports.Setup(r => r.GetOverdueAsync(Sessions.Admin.UserId, new DateOnly(2026, 3, 5), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new OverdueRentalRow(7, "Film", "ornek", Today.AddDays(-5), Today.AddDays(-1))]);
+        var service = new ReportService(_reports.Object, clock.Object, _time, new RentalPolicy { DailyLateFee = 7.5m, MaxRentalDays = 30 }, _audit, new ReportRangeValidator());
+
+        var file = await service.ExportCsvAsync(Sessions.Admin, ReportKind.Overdue, March, Ct);
+
+        Assert.Equal("geciken-kiralamalar-20260305.csv", file.SuggestedName);
+        Assert.Contains("\"4\";\"30,00\"", Text(file.Content), StringComparison.Ordinal);
+        clock.Verify(c => c.GetUtcNowAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Theory]
