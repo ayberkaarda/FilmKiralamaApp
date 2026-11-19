@@ -20,42 +20,29 @@ Bu proje, C# (Windows Forms) ve SQL Server kullanılarak geliştirilmiş basit b
 
 ## 🔧 Veritabanı Bağlantısı
 
-Uygulamada SQL Server bağlantısı hem `App.config` dosyasında hem de `ConnectionManager.cs` gibi sınıflarda tanımlıdır. Bu alanlarda **kendi bilgisayarınıza uygun sunucu adı (Server Name)** ve gerekli durumlarda **kullanıcı adı/parola** gibi bilgileri girmeniz gerekir.
+Bağlantı dizesi koda yazılmaz. Uygulama onu sırasıyla `appsettings.json` (sürüm kontrolüne girmez), kullanıcı gizli ayarları (user secrets) ve `FILM_CONNECTION` ortam değişkeninden okur; sonraki kaynak öncekini geçersiz kılar.
 
-### Bağlantı dizesi örneği:
+```powershell
+# Seçenek 1: örnek ayar dosyasını kopyalayıp bağlantı dizesini düzenleyin
+Copy-Item src\FilmKiralama.UI\appsettings.example.json src\FilmKiralama.UI\appsettings.json
 
-```xml
-<!-- App.config içinde -->
-<connectionStrings>
-  <add name="FilmKiralamaDB"
-       connectionString="Server=YOUR_SERVER_NAME;Database=FilmKiralama;Trusted_Connection=True;" 
-       providerName="System.Data.SqlClient"/>
-</connectionStrings>
+# Seçenek 2: kullanıcı gizli ayarları
+dotnet user-secrets set "ConnectionStrings:FilmKiralama" "Server=YOUR_SERVER_NAME;Database=FilmKiralama;Trusted_Connection=True;TrustServerCertificate=True;" --project src\FilmKiralama.UI
+
+# Seçenek 3: ortam değişkeni
+$env:FILM_CONNECTION = "Server=YOUR_SERVER_NAME;Database=FilmKiralama;Trusted_Connection=True;TrustServerCertificate=True;"
 ```
 
-```csharp
-// ConnectionManager.cs içinde örnek kullanım
-string connectionString = "Server=YOUR_SERVER_NAME;Database=FilmKiralama;Trusted_Connection=True;";
-```
-
-> ❗ `YOUR_SERVER_NAME` kısmını kendi SQL Server örneğinizin adıyla değiştirin. Örneğin: `DESKTOP-1234\SQLEXPRESS` veya `localhost`.  
-> Eğer Windows kimlik doğrulaması yerine SQL kimlik doğrulaması kullanıyorsanız bağlantı dizesi şu şekilde olabilir:  
-> `Server=YOUR_SERVER_NAME;Database=FilmKiralama;User Id=sqlusername;Password=sqlpassword;`
+> ❗ `YOUR_SERVER_NAME` kısmını kendi SQL Server örneğinizin adıyla değiştirin (örneğin `localhost\SQLEXPRESS`).
 
 ## 📌 Kurulum
 
-1. Bu projeyi GitHub üzerinden kendi bilgisayarınıza klonlayın:
-    ```bash
-    git clone https://github.com/kullaniciadi/film-kiralama-projesi.git
-    ```
-
-2. Visual Studio ile projeyi açın.
-
-3. SQL Server'da `FilmKiralama` adlı veritabanını oluşturun ve proje içinde bulunan `FilmKiralama.sql` dosyasındaki script'i çalıştırarak tabloları oluşturun.
-
-4. `App.config` ve `ConnectionManager.cs` dosyalarında yer alan **SQL Server bağlantı dizesini**, kendi bilgisayarınıza uygun şekilde güncelleyin.
-
-5. Projeyi derleyin (`Ctrl+Shift+B`) ve uygulamayı çalıştırarak test edin.
+1. Projeyi klonlayın ve [.NET 10 SDK](https://dotnet.microsoft.com/download) kurulu olduğundan emin olun.
+2. Bağlantı dizesini yukarıdaki yollardan biriyle verin.
+3. Derleyip çalıştırın: `dotnet run --project src\FilmKiralama.UI`. Veritabanı ilk açılışta EF Core migration'larıyla oluşturulur; eski uygulamanın veritabanı verileri korunarak yerinde yükseltilir. Migration'ları elle uygulamak için: `dotnet tool restore` ve `dotnet ef database update --project src\FilmKiralama.Data`.
+4. Boş bir veritabanında varsayılan hesap yoktur: ilk açılışta yönetici hesabını kendi belirlediğiniz şifreyle oluşturursunuz. Hesapları olup yöneticisi olmayan bir veritabanında ilk yönetici, veritabanı sahibinin `docs\issue-setup-key.sql` betiğiyle ürettiği kurulum anahtarıyla oluşturulur. Uygulamanın kendi SQL oturumu için örnek yetkiler `docs\grant-app-login.sql` dosyasındadır.
+5. Deneme verisi yalnızca istenirse ve yalnızca boş veritabanına eklenir: `FILM_DEMO=1` ya da `"Seed": { "Demo": true }`. Deneme hesapları: `yonetici` / `Demo.Yonetici1`, `ornek` / `Demo.Kullanici1`. Gerçek bir kurulumda açmayın.
+6. Testler: `dotnet test -c Release`. SQL Server testleri varsayılan olarak `localhost\SQLEXPRESS` kullanır (`FILM_TEST_SQLSERVER` ile değiştirilebilir); `FILM_SKIP_SQL_TESTS=1` bu testleri atlar.
 
 ## 📸 Ekran Görüntüleri
 
