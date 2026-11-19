@@ -1,6 +1,7 @@
 using FilmKiralama.Business;
 using FilmKiralama.Business.Reviews;
 using FilmKiralama.Business.Services;
+using FilmKiralama.Business.Watchlists;
 using FilmKiralama.Domain.Entities;
 using FilmKiralama.UI.Infrastructure;
 
@@ -237,6 +238,51 @@ internal sealed class ControlledReviewService : IReviewService
     public void CompleteSave() => _save.SetResult();
 
     public void CompleteHide() => _hide.SetResult();
+}
+
+/// <summary>Watchlist calls; additions and removals stay pending until the test completes them.</summary>
+internal sealed class ControlledWatchlistService : IWatchlistService
+{
+    private TaskCompletionSource<bool> _add = new();
+    private TaskCompletionSource _remove = new();
+
+    public List<WatchlistView> Entries { get; } =
+    [
+        new(5, new CatalogItem(ControlledFilmService.Film(1, "Sisli Liman", "Gerilim"), 4.3m, 3), new DateOnly(2026, 3, 1)),
+        new(6, new CatalogItem(Unavailable(), null, 0), new DateOnly(2026, 2, 27)),
+    ];
+
+    public List<int> Added { get; } = [];
+
+    public List<int> Removed { get; } = [];
+
+    public Task<bool> AddAsync(UserSession session, int filmId, CancellationToken cancellationToken = default)
+    {
+        Added.Add(filmId);
+        _add = new TaskCompletionSource<bool>();
+        return _add.Task;
+    }
+
+    public Task RemoveAsync(UserSession session, int entryId, CancellationToken cancellationToken = default)
+    {
+        Removed.Add(entryId);
+        _remove = new TaskCompletionSource();
+        return _remove.Task;
+    }
+
+    public Task<IReadOnlyList<WatchlistView>> GetMineAsync(UserSession session, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<WatchlistView>>([.. Entries]);
+
+    public void CompleteAdd(bool added) => _add.SetResult(added);
+
+    public void CompleteRemove() => _remove.SetResult();
+
+    private static Film Unavailable()
+    {
+        var film = ControlledFilmService.Film(2, "Son Vapur", "Dram");
+        film.AvailableCopies = 0;
+        return film;
+    }
 }
 
 /// <summary>Answers confirmations with yes and records every message instead of showing a dialog.</summary>

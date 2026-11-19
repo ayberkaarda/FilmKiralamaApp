@@ -72,6 +72,9 @@ public enum AuditEvent
 
     /// <summary>An admin hid a review or showed it again.</summary>
     ReviewModerated = 19,
+
+    /// <summary>A customer added a film to their watchlist or removed one.</summary>
+    WatchlistChanged = 20,
 }
 
 /// <summary>Role of the account an <see cref="AuditEvent"/> concerns.</summary>
@@ -112,6 +115,7 @@ public static class AuditCodes
         AuditEvent.ReviewSaved => "review.saved",
         AuditEvent.ReviewDeleted => "review.deleted",
         AuditEvent.ReviewModerated => "review.moderated",
+        AuditEvent.WatchlistChanged => "watchlist.changed",
         _ => throw new ArgumentOutOfRangeException(nameof(auditEvent), auditEvent, "Unknown audit event."),
     };
 

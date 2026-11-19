@@ -12,7 +12,7 @@ public sealed class ListingTests
     public void Catalog_AnswersOutOfOrder_ShowOnlyTheLatestFilter() => Run(() =>
     {
         var films = new ControlledFilmService();
-        using var form = new AnaForm(films, new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
+        using var form = new AnaForm(films, new ControlledWatchlistService(), new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
         var refresh = form.RefreshAsync();
         films.CatalogRequests[0].Answer.SetResult(ControlledFilmService.Page(films.Films));
         Assert.True(refresh.IsCompletedSuccessfully);
@@ -33,7 +33,7 @@ public sealed class ListingTests
     public void Catalog_FillingTheFilters_StartsNoLoadAndKeepsTheChoice() => Run(() =>
     {
         var films = new ControlledFilmService();
-        using var form = new AnaForm(films, new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
+        using var form = new AnaForm(films, new ControlledWatchlistService(), new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
         _ = form.RefreshAsync();
         Assert.Single(films.CatalogRequests);
         films.CatalogRequests[0].Answer.SetResult(ControlledFilmService.Page(films.Films));

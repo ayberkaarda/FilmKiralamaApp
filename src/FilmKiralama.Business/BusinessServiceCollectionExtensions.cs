@@ -3,6 +3,7 @@ using FilmKiralama.Business.Reviews;
 using FilmKiralama.Business.Security;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Business.Validation;
+using FilmKiralama.Business.Watchlists;
 using FilmKiralama.Domain.Entities;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
@@ -51,6 +52,7 @@ public static class BusinessServiceCollectionExtensions
         services.AddSingleton<IRentalService, RentalService>();
         services.AddSingleton<IAccountService, AccountService>();
         services.AddSingleton<IReviewService, ReviewService>();
+        services.AddSingleton<IWatchlistService, WatchlistService>();
         return services;
     }
 }

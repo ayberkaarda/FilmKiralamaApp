@@ -1,5 +1,6 @@
 ﻿using System.Drawing.Drawing2D;
 using FilmKiralama.Business.Services;
+using FilmKiralama.Business.Watchlists;
 using FilmKiralama.Domain.Entities;
 using FilmKiralama.UI.Infrastructure;
 
@@ -18,20 +19,24 @@ namespace FilmKiralama.UI
         private const int CardsPerRow = 4;
 
         private readonly IFilmService _films;
+        private readonly IWatchlistService _watchlist;
         private readonly IFormFactory _forms;
+        private readonly ExclusiveOperation _listing = new();
         private readonly UserSession _session;
         private readonly RequestSequence _loads = new();
         private readonly CatalogSearchBar _search;
         private readonly Pager _pager;
         private readonly Panel _scrollPanel;
 
-        public AnaForm(IFilmService films, IFormFactory forms, UserSession session)
+        public AnaForm(IFilmService films, IWatchlistService watchlist, IFormFactory forms, UserSession session)
         {
             ArgumentNullException.ThrowIfNull(films);
+            ArgumentNullException.ThrowIfNull(watchlist);
             ArgumentNullException.ThrowIfNull(forms);
             ArgumentNullException.ThrowIfNull(session);
 
             _films = films;
+            _watchlist = watchlist;
             _forms = forms;
             _session = session;
             Prompts = new MessageBoxPrompts(this);
@@ -87,6 +92,23 @@ namespace FilmKiralama.UI
         internal CatalogSearchBar Search => _search;
 
         internal Pager Pager => _pager;
+
+        /// <summary>The "add to watchlist" buttons of the cards shown now.</summary>
+        internal IReadOnlyList<Button> WatchlistButtons { get; private set; } = [];
+
+        /// <summary>
+        /// Adds a film to the watchlist; ignored while another addition is running, and every add button
+        /// stays disabled meanwhile.
+        /// </summary>
+        internal Task<bool> AddToWatchlistAsync(int filmId) =>
+            this.RunExclusiveAsync(
+                _listing,
+                async () =>
+                {
+                    var added = await _watchlist.AddAsync(_session, filmId);
+                    Prompts.Inform(added ? "Film izleme listenize eklendi." : "Film zaten izleme listenizde.");
+                },
+                [.. WatchlistButtons]);
 
         /// <summary>Loads the search choices and the shown page again.</summary>
         internal async Task RefreshAsync()
@@ -153,6 +175,28 @@ namespace FilmKiralama.UI
             };
             header.Controls.Add(profile);
 
+            var watchlist = new Button
+            {
+                Name = "btnIzlemeListesi",
+                Text = "İzleme Listem",
+                Size = new Size(120, 30),
+                Location = new Point(header.Width - 360, 10),
+                BackColor = Color.SteelBlue,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+            };
+            watchlist.Click += async (_, _) =>
+            {
+                using (var form = _forms.Create<IzlemeListesiForm>(_session))
+                {
+                    form.ShowDialog(this);
+                }
+
+                // A rental from the list takes a copy off the shelf.
+                await this.RunAsync(RefreshAsync);
+            };
+            header.Controls.Add(watchlist);
+
             var signOut = new Button
             {
                 Text = "Çıkış Yap",
@@ -176,6 +220,7 @@ namespace FilmKiralama.UI
 
         private void ShowFilms(IReadOnlyList<CatalogItem> films)
         {
+            var addButtons = new List<Button>();
             _scrollPanel.SuspendLayout();
             try
             {
@@ -189,6 +234,7 @@ namespace FilmKiralama.UI
                 for (var i = 0; i < films.Count; i++)
                 {
                     var card = BuildCard(films[i]);
+                    addButtons.AddRange(card.Controls.OfType<Button>().Where(b => b.Name == "btnListeyeEkle"));
                     card.Location = new Point(
                         left + (i % CardsPerRow * (CardWidth + CardSpacing)),
                         10 + (i / CardsPerRow * (CardHeight + RowSpacing)) + _scrollPanel.AutoScrollPosition.Y);
@@ -199,6 +245,8 @@ namespace FilmKiralama.UI
             {
                 _scrollPanel.ResumeLayout();
             }
+
+            WatchlistButtons = addButtons;
         }
 
         private Panel BuildCard(CatalogItem item)
@@ -237,8 +285,8 @@ namespace FilmKiralama.UI
                 Name = "btnKirala",
                 Text = item.IsAvailable ? "Kirala" : "Stokta yok",
                 Enabled = item.IsAvailable,
-                Size = new Size(120, 36),
-                Location = new Point((CardWidth - 120) / 2, 420),
+                Size = new Size(105, 36),
+                Location = new Point(10, 420),
                 Font = new Font("Segoe UI", 10, FontStyle.Bold),
                 BackColor = ColorTranslator.FromHtml("#3cb371"),
                 ForeColor = Color.White,
@@ -262,6 +310,22 @@ namespace FilmKiralama.UI
                 }
             };
             card.Controls.Add(rent);
+
+            var add = new Button
+            {
+                Name = "btnListeyeEkle",
+                Text = "Listeye Ekle",
+                Size = new Size(105, 36),
+                Location = new Point(CardWidth - 115, 420),
+                Font = new Font("Segoe UI", 9, FontStyle.Bold),
+                BackColor = Color.SteelBlue,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+            };
+            add.FlatAppearance.BorderSize = 0;
+            add.Region = Rounded(add.Size, 20);
+            add.Click += async (_, _) => await AddToWatchlistAsync(filmId);
+            card.Controls.Add(add);
             return card;
         }
 

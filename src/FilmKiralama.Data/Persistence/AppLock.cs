@@ -130,6 +130,10 @@ internal static class Locks
     public static Task FilmAsync(FilmDbContext db, int filmId, CancellationToken cancellationToken) =>
         AppLock.AcquireAsync(db, "FilmKiralama.Film." + filmId.ToString(CultureInfo.InvariantCulture), TimeoutMilliseconds, cancellationToken);
 
+    /// <summary>Serializes the additions to one account's watchlist, so its size limit and its duplicate check hold.</summary>
+    public static Task WatchlistAsync(FilmDbContext db, int userId, CancellationToken cancellationToken) =>
+        AppLock.AcquireAsync(db, "FilmKiralama.Watchlist." + userId.ToString(CultureInfo.InvariantCulture), TimeoutMilliseconds, cancellationToken);
+
     /// <summary>Serializes changes of the admin role, so two concurrent demotions cannot remove the last admin.</summary>
     public static Task AdminRolesAsync(FilmDbContext db, CancellationToken cancellationToken) =>
         AppLock.AcquireAsync(db, "FilmKiralama.AdminRoles", TimeoutMilliseconds, cancellationToken);

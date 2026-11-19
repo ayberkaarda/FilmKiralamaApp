@@ -12,7 +12,7 @@ public sealed class CatalogUiTests
     public void Catalog_SearchFields_BuildTheQuery() => Run(() =>
     {
         var films = new ControlledFilmService();
-        using var form = new AnaForm(films, new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
+        using var form = new AnaForm(films, new ControlledWatchlistService(), new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
         _ = form.RefreshAsync();
         films.CatalogRequests[0].Answer.SetResult(ControlledFilmService.Page(films.Films, total: 30));
 
@@ -38,7 +38,7 @@ public sealed class CatalogUiTests
     public void Catalog_PageAnswersOutOfOrder_ShowOnlyTheLatest() => Run(() =>
     {
         var films = new ControlledFilmService();
-        using var form = new AnaForm(films, new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
+        using var form = new AnaForm(films, new ControlledWatchlistService(), new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
 
         var second = form.LoadFilmsAsync(2);
         var third = form.LoadFilmsAsync(3);
@@ -57,7 +57,7 @@ public sealed class CatalogUiTests
     {
         var films = new ControlledFilmService();
         films.Films[1].AvailableCopies = 0;
-        using var form = new AnaForm(films, new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
+        using var form = new AnaForm(films, new ControlledWatchlistService(), new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
 
         _ = form.LoadFilmsAsync();
         films.CatalogRequests[0].Answer.SetResult(ControlledFilmService.Page(films.Films));

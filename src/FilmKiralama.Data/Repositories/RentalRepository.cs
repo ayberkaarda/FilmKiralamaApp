@@ -70,6 +70,12 @@ internal sealed class RentalRepository(IDbContextFactory<FilmDbContext> contextF
         try
         {
             await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+            // A rented film leaves the renter's watchlist in the same transaction.
+            await db.WatchlistEntries
+                .Where(w => w.UserId == request.UserId && w.FilmId == request.FilmId)
+                .ExecuteDeleteAsync(cancellationToken)
+                .ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             return new RentResult(RentOutcome.Rented, rental.Id);
         }

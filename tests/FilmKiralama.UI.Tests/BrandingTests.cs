@@ -29,24 +29,26 @@ public sealed class BrandingTests
         var rentals = new ControlledRentalService();
         var forms = new NoFormsFactory();
         var reviews = new ControlledReviewService();
+        var watchlist = new ControlledWatchlistService();
         Form[] all =
         [
             new LoginForm(new PendingAuthService(), forms),
             new RegisterForm(new PendingAuthService()),
             new SifreDegistirmeForm(new PendingAuthService(), Sessions.User),
-            new AnaForm(films, forms, Sessions.User),
+            new AnaForm(films, watchlist, forms, Sessions.User),
             new KiralamaForm(films, rentals, reviews, Sessions.User, 1),
             new KullaniciProfil(rentals, reviews, forms, Sessions.User),
             new AdminPanel(films, forms, Sessions.Admin),
             new KiralananFilmlerPanel(rentals, films, Sessions.Admin),
             new DegerlendirmeForm(reviews, Sessions.User, reviews.Reviewable[0]),
             new YorumYonetimForm(reviews, Sessions.Admin),
+            new IzlemeListesiForm(watchlist, forms, Sessions.User),
         ];
 
         try
         {
             Assert.Equal(
-                ["Film Kiralama", "Kayıt Ol", "Şifre Değiştir", "Film Kirala", "Kiralama Ekranı", "Kullanıcı Profili", "Yönetim Paneli", "Kiralanan Filmler", "Film Değerlendir", "Yorum Yönetimi"],
+                ["Film Kiralama", "Kayıt Ol", "Şifre Değiştir", "Film Kirala", "Kiralama Ekranı", "Kullanıcı Profili", "Yönetim Paneli", "Kiralanan Filmler", "Film Değerlendir", "Yorum Yönetimi", "İzleme Listem"],
                 all.Select(f => f.Text));
             Assert.All(all, f => Assert.NotNull(f.Icon));
         }

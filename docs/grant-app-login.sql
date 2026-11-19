@@ -2,7 +2,7 @@
 --
 -- Run it as the database owner, connected to the application's database, after the first start with
 -- the owner's connection has created or upgraded the schema. Afterwards point the application's
--- connection string at this login. It may read and write the account, film, rental and review tables, but on
+-- connection string at this login. It may read and write the account, film, rental, review and watchlist tables, but on
 -- the setup key table only read and mark a key used: it cannot create, replace, extend or delete a
 -- setup key. Keys come only from docs/issue-setup-key.sql, run by the database owner.
 --
@@ -26,6 +26,9 @@ FROM (VALUES (N'Kullanicilar'), (N'Filmler')) AS t(name);
 
 -- Reviews: customers store, change and delete their own; admins hide them.
 SET @sql += N'GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.Degerlendirmeler TO ' + @user + N';' + NCHAR(10);
+
+-- Watchlists: customers add and remove their own entries.
+SET @sql += N'GRANT SELECT, INSERT, DELETE ON dbo.IzlemeListesi TO ' + @user + N';' + NCHAR(10);
 
 -- Rentals are never deleted: a returned rental keeps its row with a new status.
 SET @sql += N'GRANT SELECT, INSERT, UPDATE ON dbo.Kiralama TO ' + @user + N';' + NCHAR(10)
