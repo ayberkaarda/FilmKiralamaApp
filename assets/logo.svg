@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Film Kiralama application mark: a white film frame with sprocket holes and a play sign on a coral tile. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f0465c"/>
+      <stop offset="1" stop-color="#a8162c"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#tile)"/>
+  <rect x="50" y="60" width="156" height="136" rx="14" fill="#ffffff"/>
+  <g fill="#c81e36">
+    <rect x="60" y="72" width="16" height="12" rx="3"/>
+    <rect x="60" y="98" width="16" height="12" rx="3"/>
+    <rect x="60" y="124" width="16" height="12" rx="3"/>
+    <rect x="60" y="150" width="16" height="12" rx="3"/>
+    <rect x="60" y="172" width="16" height="12" rx="3"/>
+    <rect x="180" y="72" width="16" height="12" rx="3"/>
+    <rect x="180" y="98" width="16" height="12" rx="3"/>
+    <rect x="180" y="124" width="16" height="12" rx="3"/>
+    <rect x="180" y="150" width="16" height="12" rx="3"/>
+    <rect x="180" y="172" width="16" height="12" rx="3"/>
+  </g>
+  <rect x="86" y="72" width="84" height="112" rx="8" fill="#22222e"/>
+  <polygon points="114,106 114,150 152,128" fill="#ffffff"/>
+</svg>
