@@ -76,6 +76,7 @@ public interface IFilmService
 internal sealed class FilmService(
     IFilmRepository films,
     TimeProvider timeProvider,
+    IClock clock,
     IAuditLog audit,
     IValidator<FilmFields> validator,
     IValidator<CatalogQuery> queryValidator) : IFilmService
@@ -133,7 +134,7 @@ internal sealed class FilmService(
     public async Task<int> AddAsync(UserSession session, FilmInput input, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
-        var film = Validate(input, change: false);
+        var film = Validate(input, change: false, await CurrentYearAsync(cancellationToken).ConfigureAwait(false));
         var id = await audit.AsActorAsync(session, () => films.AddAsync(session.Actor, film, cancellationToken)).ConfigureAwait(false);
         audit.Record(AuditEvent.FilmChanged, AuditRole.Admin);
         return id;
@@ -142,7 +143,7 @@ internal sealed class FilmService(
     public async Task UpdateAsync(UserSession session, int filmId, int expectedVersion, FilmInput input, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
-        var film = Validate(input, change: true);
+        var film = Validate(input, change: true, await CurrentYearAsync(cancellationToken).ConfigureAwait(false));
         film.Id = filmId;
         film.Version = expectedVersion;
         var outcome = await audit.AsActorAsync(session, () => films.UpdateAsync(session.Actor, film, cancellationToken)).ConfigureAwait(false);
@@ -176,6 +177,13 @@ internal sealed class FilmService(
         }
     }
 
+    /// <summary>
+    /// The newest year a film may have: the current year by the database's clock, in this computer's time
+    /// zone, so a computer whose own clock is wrong neither refuses this year's films nor accepts future ones.
+    /// </summary>
+    private async Task<int> CurrentYearAsync(CancellationToken cancellationToken) =>
+        (await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false)).Year;
+
     /// <summary>The query with its title trimmed (an empty one searches nothing), refused when invalid.</summary>
     private CatalogQuery Checked(CatalogQuery query)
     {
@@ -196,9 +204,9 @@ internal sealed class FilmService(
     /// <paramref name="change"/> the description may be empty (stored as NULL): the upgrade keeps films
     /// of the original application without one, and they can be changed or listed again as they are.
     /// </summary>
-    private Film Validate(FilmInput input, bool change)
+    private Film Validate(FilmInput input, bool change, int currentYear)
     {
-        var fields = FilmFields.Create(input, timeProvider.Today().Year, change);
+        var fields = FilmFields.Create(input, currentYear, change);
         var result = validator.Validate(fields);
         if (!result.IsValid)
         {

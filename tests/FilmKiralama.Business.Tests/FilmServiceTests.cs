@@ -193,5 +193,31 @@ public sealed class FilmServiceTests
         Assert.Equal(AccessDeniedException.SessionRevokedMessage, error.Message);
     }
 
-    private FilmService Service() => new(_films.Object, _time, _audit, TestValidators.Film, new Validation.CatalogQueryValidator());
+    /// <summary>
+    /// The newest year a film may have is the current year by the database's clock (in this computer's
+    /// time zone): a computer whose clock is years behind still accepts this year's film, and one whose
+    /// clock is ahead accepts no film from the future.
+    /// </summary>
+    [Fact]
+    public async Task FilmYear_IsCheckedAgainstTheDatabaseClock()
+    {
+        var database = new TimeProviderClock(_time);
+        _films.Setup(f => f.AddAsync(Sessions.Admin.Actor, It.Is<Film>(film => film.Year == 2026), It.IsAny<CancellationToken>())).ReturnsAsync(5);
+        _films.Setup(f => f.UpdateAsync(Sessions.Admin.Actor, It.Is<Film>(film => film.Year == 2026), It.IsAny<CancellationToken>())).ReturnsAsync(FilmUpdateOutcome.Updated);
+        var behind = Service(new FakeTimeProvider(new DateTimeOffset(2024, 6, 1, 12, 0, 0, TimeSpan.Zero)), database);
+        var ahead = Service(new FakeTimeProvider(new DateTimeOffset(2030, 6, 1, 12, 0, 0, TimeSpan.Zero)), database);
+
+        Assert.Equal(5, await behind.AddAsync(Sessions.Admin, Valid with { Year = "2026" }, Ct));
+        await behind.UpdateAsync(Sessions.Admin, 3, 1, Valid with { Year = "2026" }, Ct);
+        var future = await Assert.ThrowsAsync<BusinessRuleException>(() => ahead.AddAsync(Sessions.Admin, Valid with { Year = "2028" }, Ct));
+        var futureChange = await Assert.ThrowsAsync<BusinessRuleException>(() => ahead.UpdateAsync(Sessions.Admin, 3, 1, Valid with { Year = "2028" }, Ct));
+
+        Assert.Equal(Validation.FilmFieldsValidator.YearInvalid(2026), future.FieldErrors[nameof(FilmInput.Year)]);
+        Assert.Equal(Validation.FilmFieldsValidator.YearInvalid(2026), futureChange.FieldErrors[nameof(FilmInput.Year)]);
+    }
+
+    private FilmService Service() => Service(_time, new TimeProviderClock(_time));
+
+    private FilmService Service(TimeProvider computer, IClock database) =>
+        new(_films.Object, computer, database, _audit, TestValidators.Film, new Validation.CatalogQueryValidator());
 }

@@ -109,5 +109,5 @@ public sealed class CatalogSearchTests
     }
 
     private FilmService Service() =>
-        new(_films.Object, new FakeTimeProvider(), _audit, TestValidators.Film, new CatalogQueryValidator());
+        new(_films.Object, new FakeTimeProvider(), new TimeProviderClock(new FakeTimeProvider()), _audit, TestValidators.Film, new CatalogQueryValidator());
 }
