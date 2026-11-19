@@ -183,7 +183,17 @@ internal sealed class ControlledFilmService : IFilmService
         return _add.Task;
     }
 
-    public Task UpdateAsync(UserSession session, int filmId, FilmInput input, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    /// <summary>Every change asked for: the film, the version its form loaded and the input.</summary>
+    public List<(int FilmId, int Version, FilmInput Input)> Updates { get; } = [];
+
+    /// <summary>Thrown by the next change instead of completing it, when set.</summary>
+    public Exception? UpdateFailure { get; set; }
+
+    public Task UpdateAsync(UserSession session, int filmId, int expectedVersion, FilmInput input, CancellationToken cancellationToken = default)
+    {
+        Updates.Add((filmId, expectedVersion, input));
+        return UpdateFailure is { } failure ? Task.FromException(failure) : Task.CompletedTask;
+    }
 
     public Task DeleteAsync(UserSession session, int filmId, CancellationToken cancellationToken = default) => Task.CompletedTask;
 

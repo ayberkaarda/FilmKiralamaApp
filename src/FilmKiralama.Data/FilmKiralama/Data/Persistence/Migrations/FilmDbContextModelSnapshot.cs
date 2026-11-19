@@ -76,6 +76,12 @@ namespace FilmKiralama.Data.Persistence.Migrations
                         .HasColumnType("int")
                         .HasColumnName("Adet");
 
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1)
+                        .HasColumnName("Surum");
+
                     b.Property<int>("Year")
                         .HasColumnType("int")
                         .HasColumnName("Yil");
@@ -94,6 +100,8 @@ namespace FilmKiralama.Data.Persistence.Migrations
                             t.HasCheckConstraint("CK_Filmler_Adet", "[Adet] >= 0 AND [MevcutAdet] >= 0 AND [MevcutAdet] <= [Adet]");
 
                             t.HasCheckConstraint("CK_Filmler_GunlukUcret", "[GunlukUcret] > 0");
+
+                            t.HasCheckConstraint("CK_Filmler_Surum", "[Surum] >= 1");
                         });
                 });
 

@@ -168,6 +168,29 @@ public sealed class ExclusiveWriteTests
     });
 
     /// <summary>
+    /// A film change carries the version the form loaded. When another admin changed the film meanwhile
+    /// the change is refused as stale and the form shows the film as it is now.
+    /// </summary>
+    [Fact]
+    public void UpdateFilm_StaleForm_LoadsTheFilmAgain() => Run(() =>
+    {
+        var films = new ControlledFilmService();
+        using var form = new AdminPanel(films, new NoFormsFactory(), Sessions.Admin) { Prompts = new RecordingPrompts() };
+        Assert.True(form.LoadFilmsAsync().IsCompletedSuccessfully);
+        var loaded = films.Films[0];
+        form.SelectFilm(loaded);
+        films.Films[0] = new Film { Id = loaded.Id, Title = loaded.Title, Genre = loaded.Genre, Year = loaded.Year, Director = loaded.Director, DailyPrice = 99m, TotalCopies = 5, AvailableCopies = 5, IsListed = true, Version = loaded.Version + 1 };
+        films.UpdateFailure = BusinessRuleException.Stale(FilmService.ChangedElsewhere);
+
+        form.UpdateAsync().GetAwaiter().GetResult();
+
+        Assert.Equal((loaded.Id, loaded.Version), (films.Updates[0].FilmId, films.Updates[0].Version));
+        Assert.Equal(loaded.Version + 1, form.SelectedFilm?.Version);
+        Assert.Equal(5, (int)Find<NumericUpDown>(form, "nudAdet").Value);
+        Assert.Equal(FilmService.ChangedElsewhere, form.StatusBar.Text);
+    });
+
+    /// <summary>
     /// An account change carries the version the form loaded. When another admin changed the account
     /// meanwhile the change is refused as stale and the form shows the account as it is now, so the next
     /// save starts from the current role instead of the one the old form showed.

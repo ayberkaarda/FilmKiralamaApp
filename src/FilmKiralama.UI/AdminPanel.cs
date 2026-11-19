@@ -114,7 +114,10 @@ namespace FilmKiralama.UI
         internal PosterLoader Posters { get; set; } = PosterLoader.Default;
 
         /// <summary>The film whose details are in the form, or <see langword="null"/> when a new one is entered.</summary>
-        internal int? SelectedFilmId { get; private set; }
+        internal int? SelectedFilmId => SelectedFilm?.Id;
+
+        /// <summary>The film in the form as it was loaded; its version goes back with a change.</summary>
+        internal Film? SelectedFilm { get; private set; }
 
         internal IReadOnlyList<Film> ShownFilms { get; private set; } = [];
 
@@ -178,7 +181,7 @@ namespace FilmKiralama.UI
             ArgumentNullException.ThrowIfNull(film);
 
             errorProvider1.Clear();
-            SelectedFilmId = film.Id;
+            SelectedFilm = film;
             txtAd.Text = film.Title;
             txtTur.Text = film.Genre;
             cmbYil.Text = film.Year.ToString(CultureInfo.InvariantCulture);
@@ -218,15 +221,36 @@ namespace FilmKiralama.UI
 
         internal async Task UpdateAsync()
         {
-            if (SelectedFilmId is not { } id)
+            if (SelectedFilm is not { } loaded)
             {
                 Prompts.Warn("Lütfen güncellemek için bir film seçin.");
                 return;
             }
 
+            var id = loaded.Id;
             await WriteAsync(async () =>
             {
-                await _films.UpdateAsync(_session, id, ReadInput());
+                try
+                {
+                    await _films.UpdateAsync(_session, id, loaded.Version, ReadInput());
+                }
+                catch (BusinessRuleException ex) when (ex.IsStale)
+                {
+                    // Changed or deleted meanwhile: the film is loaded again as it is now, so the next save
+                    // starts from the current price, listing and copies instead of the old ones.
+                    await RefreshAsync();
+                    if (ShownFilms.FirstOrDefault(f => f.Id == id) is { } current)
+                    {
+                        SelectFilm(current);
+                    }
+                    else
+                    {
+                        ClearForm();
+                    }
+
+                    throw;
+                }
+
                 Prompts.Inform("Film başarıyla güncellendi!");
                 await RefreshAsync();
                 if (ShownFilms.FirstOrDefault(f => f.Id == id) is { } updated)
@@ -354,7 +378,7 @@ namespace FilmKiralama.UI
 
         private void ClearForm()
         {
-            SelectedFilmId = null;
+            SelectedFilm = null;
             dataGridView1.ClearSelection();
             errorProvider1.Clear();
             txtAd.Clear();

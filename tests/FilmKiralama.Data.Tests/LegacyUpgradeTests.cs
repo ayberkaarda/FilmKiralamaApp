@@ -154,7 +154,7 @@ public sealed class LegacyUpgradeTests
         Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE KullaniciID = 6 AND Eposta IS NULL AND Telefon IS NULL", Ct));
         var filmService = provider.GetRequiredService<IFilmService>();
         var hidden = await filmService.GetAsync(admin, 9, Ct);
-        await filmService.UpdateAsync(
+        await filmService.UpdateLoadedAsync(
             admin,
             9,
             new FilmInput(hidden.Title, hidden.Genre, "2011", hidden.Director, "8", hidden.ImageUrl, hidden.About, hidden.TotalCopies, IsListed: true),

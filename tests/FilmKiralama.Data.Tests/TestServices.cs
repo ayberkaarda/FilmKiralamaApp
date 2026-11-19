@@ -82,6 +82,26 @@ internal static class TestServices
         await accounts.UpdateAsync(session, userId, version, input, ct);
     }
 
+    /// <summary>
+    /// Changes film <paramref name="filmId"/> as the admin's form does right after loading it: the version
+    /// comes from the film <paramref name="session"/> reads just before. A session that may not read it
+    /// sends version 1, so the change itself decides the refusal.
+    /// </summary>
+    public static async Task UpdateLoadedAsync(this IFilmService films, UserSession session, int filmId, FilmInput input, CancellationToken ct)
+    {
+        int version;
+        try
+        {
+            version = (await films.GetAsync(session, filmId, ct)).Version;
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or BusinessRuleException)
+        {
+            version = 1;
+        }
+
+        await films.UpdateAsync(session, filmId, version, input, ct);
+    }
+
     /// <summary>Registers a customer through the real service and returns its session.</summary>
     public static async Task<UserSession> RegisterAsync(IServiceProvider provider, string name, int number)
     {

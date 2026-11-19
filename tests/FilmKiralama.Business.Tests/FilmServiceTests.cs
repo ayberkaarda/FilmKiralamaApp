@@ -23,7 +23,7 @@ public sealed class FilmServiceTests
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => service.GetAllAsync(Sessions.User, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => service.AddAsync(Sessions.User, Valid, Ct));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => service.UpdateAsync(Sessions.User, 1, Valid, Ct));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => service.UpdateAsync(Sessions.User, 1, 1, Valid, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => service.DeleteAsync(Sessions.User, 1, Ct));
 
         _films.VerifyNoOtherCalls();
@@ -105,6 +105,24 @@ public sealed class FilmServiceTests
         await Service().AddAsync(Sessions.Admin, Valid with { ImageUrl = "  " }, Ct);
     }
 
+    /// <summary>
+    /// The version the form loaded goes to the repository with the film; when the film changed or
+    /// disappeared since, the refusal is marked stale so the form loads it again.
+    /// </summary>
+    [Theory]
+    [InlineData(FilmUpdateOutcome.ChangedElsewhere, FilmService.ChangedElsewhere)]
+    [InlineData(FilmUpdateOutcome.NotFound, FilmService.NotFound)]
+    public async Task Update_ChangedOrDeletedSinceLoaded_IsRefusedAsStale(FilmUpdateOutcome outcome, string message)
+    {
+        _films.Setup(f => f.UpdateAsync(Sessions.Admin.Actor, It.Is<Film>(film => film.Id == 3 && film.Version == 7), It.IsAny<CancellationToken>())).ReturnsAsync(outcome);
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 3, 7, Valid, Ct));
+
+        Assert.Equal(message, error.Message);
+        Assert.True(error.IsStale);
+        Assert.Empty(_audit.Entries);
+    }
+
     [Theory]
     [InlineData(FilmUpdateOutcome.CopiesBelowRented, FilmService.CopiesBelowRented)]
     [InlineData(FilmUpdateOutcome.NotFound, FilmService.NotFound)]
@@ -112,7 +130,7 @@ public sealed class FilmServiceTests
     {
         _films.Setup(f => f.UpdateAsync(Sessions.Admin.Actor, It.Is<Film>(film => film.Id == 3), It.IsAny<CancellationToken>())).ReturnsAsync(outcome);
 
-        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 3, Valid, Ct));
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 3, 1, Valid, Ct));
 
         Assert.Equal(message, error.Message);
         Assert.Empty(_audit.Entries);
@@ -127,12 +145,12 @@ public sealed class FilmServiceTests
             .Callback<Actor, Film, CancellationToken>((_, film, _) => stored = film)
             .ReturnsAsync(FilmUpdateOutcome.Updated);
 
-        await Service().UpdateAsync(Sessions.Admin, 9, Valid with { About = "  ", IsListed = true }, Ct);
+        await Service().UpdateAsync(Sessions.Admin, 9, 1, Valid with { About = "  ", IsListed = true }, Ct);
 
         Assert.NotNull(stored);
         Assert.Null(stored.About);
         Assert.True(stored.IsListed);
-        var tooLong = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 9, Valid with { About = new string('a', 4001) }, Ct));
+        var tooLong = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 9, 1, Valid with { About = new string('a', 4001) }, Ct));
         Assert.Equal([nameof(FilmInput.About)], tooLong.FieldErrors.Keys);
     }
 

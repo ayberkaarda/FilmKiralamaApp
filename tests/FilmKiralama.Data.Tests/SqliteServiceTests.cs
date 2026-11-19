@@ -295,7 +295,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
             () => accounts.DeleteAsync(sessionB, SeedUserId, Ct),
             () => accounts.GetAllAsync(sessionB, Ct),
             () => films.AddAsync(sessionB, new FilmInput("Yeni", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 1, true), Ct),
-            () => films.UpdateAsync(sessionB, ThreeCopiesFilmId, new FilmInput("Degisti", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 9, true), Ct),
+            () => films.UpdateLoadedAsync(sessionB, ThreeCopiesFilmId, new FilmInput("Degisti", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 9, true), Ct),
             () => films.DeleteAsync(sessionB, removable, Ct),
             () => films.GetAllAsync(sessionB, Ct),
             () => rentals.ReturnAsync(sessionB, rental.RentalId, Ct),
@@ -586,6 +586,34 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         return await db.Films.Where(f => f.Id == filmId).Select(f => f.AvailableCopies).SingleAsync(Ct);
     }
 
+    /// <summary>
+    /// Admin A opened a film; admin B changed its price meanwhile. A's save of the old form (with the old
+    /// price and another listing state) is refused as stale and writes nothing; after loading the film
+    /// again A's change goes through. Rentals and returns move only the shelf, never the version.
+    /// </summary>
+    [Fact]
+    public async Task UpdateFilm_FromAFormLoadedBeforeAnotherChange_IsRefused()
+    {
+        var films = _db.Get<IFilmService>();
+        var loadedByA = await films.GetAsync(Admin(SeedAdminId), ThreeCopiesFilmId, Ct);
+        var rental = await RentAsync(_db.Services, User(SeedUserId), ThreeCopiesFilmId);
+        await _db.Get<IRentalService>().ReturnAsync(User(SeedUserId), rental.RentalId, Ct);
+        Assert.Equal(loadedByA.Version, (await films.GetAsync(Admin(SeedAdminId), ThreeCopiesFilmId, Ct)).Version);
+
+        await UpdateFilmAsync(ThreeCopiesFilmId, price: "40");
+        var stale = new FilmInput(loadedByA.Title, loadedByA.Genre, loadedByA.Year.ToString(System.Globalization.CultureInfo.InvariantCulture), loadedByA.Director, "25", loadedByA.ImageUrl, loadedByA.About, 9, false);
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => films.UpdateAsync(Admin(SeedAdminId), ThreeCopiesFilmId, loadedByA.Version, stale, Ct));
+
+        Assert.Equal(FilmService.ChangedElsewhere, error.Message);
+        Assert.True(error.IsStale);
+        var current = await films.GetAsync(Admin(SeedAdminId), ThreeCopiesFilmId, Ct);
+        Assert.Equal((40m, 3, true, loadedByA.Version + 1), (current.DailyPrice, current.TotalCopies, current.IsListed, current.Version));
+
+        await films.UpdateAsync(Admin(SeedAdminId), ThreeCopiesFilmId, current.Version, stale, Ct);
+        var changed = await films.GetAsync(Admin(SeedAdminId), ThreeCopiesFilmId, Ct);
+        Assert.Equal((25m, 9, false), (changed.DailyPrice, changed.TotalCopies, changed.IsListed));
+    }
+
     private async Task UpdateFilmAsync(int filmId, string? price = null, int? copies = null, bool? listed = null)
     {
         var films = _db.Get<IFilmService>();
@@ -593,6 +621,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         await films.UpdateAsync(
             Admin(SeedAdminId),
             filmId,
+            film.Version,
             new FilmInput(
                 film.Title,
                 film.Genre,

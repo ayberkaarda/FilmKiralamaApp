@@ -48,6 +48,8 @@ internal static class SchemaLimits
     /// <summary>The shelf can neither go negative nor hold more copies than the shop owns.</summary>
     public const string CopiesCheck = "[Adet] >= 0 AND [MevcutAdet] >= 0 AND [MevcutAdet] <= [Adet]";
 
+    public const string FilmVersionCheck = "[Surum] >= 1";
+
     /// <summary>Values of <see cref="Domain.Entities.RentalStatus"/>: 0 active, 1 returned.</summary>
     public const string RentalStatusCheck = "[Durum] IN (0, 1)";
 

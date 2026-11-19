@@ -56,8 +56,15 @@ public interface IFilmService
     /// <summary>Adds a film with all its copies on the shelf (admin only) and returns its id.</summary>
     Task<int> AddAsync(UserSession session, FilmInput input, CancellationToken cancellationToken = default);
 
-    /// <summary>Changes a film (admin only); its copies cannot go below the copies rented out.</summary>
-    Task UpdateAsync(UserSession session, int filmId, FilmInput input, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Changes a film loaded at <paramref name="expectedVersion"/> (<see cref="Film.Version"/>), admin only;
+    /// its copies cannot go below the copies rented out.
+    /// </summary>
+    /// <exception cref="BusinessRuleException">
+    /// The input is invalid, or (with <see cref="BusinessRuleException.IsStale"/>) another admin changed or
+    /// deleted the film since it was loaded.
+    /// </exception>
+    Task UpdateAsync(UserSession session, int filmId, int expectedVersion, FilmInput input, CancellationToken cancellationToken = default);
 
     /// <summary>Deletes a film that has never been rented (admin only).</summary>
     Task DeleteAsync(UserSession session, int filmId, CancellationToken cancellationToken = default);
@@ -74,6 +81,7 @@ internal sealed class FilmService(
     internal const string InputInvalid = "Lütfen gerekli alanları doldurun.";
     internal const string HasRentals = "Kiralama geçmişi olan film silinemez. Kiralamaya kapatmak için \"Kiralamaya açık\" seçeneğini kaldırın.";
     internal const string CopiesBelowRented = "Adet, şu anda kirada olan kopya sayısından az olamaz.";
+    internal const string ChangedElsewhere = "Film siz düzenlerken başka biri tarafından değiştirildi. Güncel hali yüklendi; lütfen değişikliğinizi yeniden yapın.";
 
     public Task<IReadOnlyList<Film>> GetCatalogAsync(UserSession session, FilmFilter filter, CancellationToken cancellationToken = default)
     {
@@ -131,11 +139,12 @@ internal sealed class FilmService(
         return id;
     }
 
-    public async Task UpdateAsync(UserSession session, int filmId, FilmInput input, CancellationToken cancellationToken = default)
+    public async Task UpdateAsync(UserSession session, int filmId, int expectedVersion, FilmInput input, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
         var film = Validate(input, change: true);
         film.Id = filmId;
+        film.Version = expectedVersion;
         var outcome = await audit.AsActorAsync(session, () => films.UpdateAsync(session.Actor, film, cancellationToken)).ConfigureAwait(false);
         switch (outcome)
         {
@@ -144,8 +153,10 @@ internal sealed class FilmService(
                 return;
             case FilmUpdateOutcome.CopiesBelowRented:
                 throw new BusinessRuleException(CopiesBelowRented);
+            case FilmUpdateOutcome.ChangedElsewhere:
+                throw BusinessRuleException.Stale(ChangedElsewhere);
             default:
-                throw new BusinessRuleException(NotFound);
+                throw BusinessRuleException.Stale(NotFound);
         }
     }
 

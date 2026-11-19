@@ -93,33 +93,57 @@ internal sealed class FilmRepository(IDbContextFactory<FilmDbContext> contextFac
         await Locks.FilmAsync(db, film.Id, cancellationToken).ConfigureAwait(false);
         await Actors.RequireAsync(db, actor, admin: true, cancellationToken).ConfigureAwait(false);
 
-        var stored = await db.Films.SingleOrDefaultAsync(f => f.Id == film.Id, cancellationToken).ConfigureAwait(false);
-        if (stored is null)
+        var id = film.Id;
+        var expectedVersion = film.Version;
+        var storedVersion = await db.Films
+            .Where(f => f.Id == id)
+            .Select(f => (int?)f.Version)
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (storedVersion is null)
         {
             return FilmUpdateOutcome.NotFound;
         }
 
+        if (storedVersion != expectedVersion)
+        {
+            return FilmUpdateOutcome.ChangedElsewhere;
+        }
+
         // Counted under the lock: no rental or return of this film can run until the commit.
         var rented = await db.Rentals
-            .CountAsync(r => r.FilmId == film.Id && r.Status == RentalStatus.Active, cancellationToken)
+            .CountAsync(r => r.FilmId == id && r.Status == RentalStatus.Active, cancellationToken)
             .ConfigureAwait(false);
         if (film.TotalCopies < rented)
         {
             return FilmUpdateOutcome.CopiesBelowRented;
         }
 
-        stored.Title = film.Title;
-        stored.Genre = film.Genre;
-        stored.Year = film.Year;
-        stored.Director = film.Director;
-        stored.DailyPrice = film.DailyPrice;
-        stored.ImageUrl = film.ImageUrl;
-        stored.About = film.About;
-        stored.IsListed = film.IsListed;
-        stored.TotalCopies = film.TotalCopies;
-        stored.AvailableCopies = film.TotalCopies - rented;
+        // The WHERE clause is the final decision: the film still has the version the form loaded, so even
+        // a writer that skipped the lock cannot have its change overwritten by a stale form.
+        var available = film.TotalCopies - rented;
+        var updated = await db.Films
+            .Where(f => f.Id == id && f.Version == expectedVersion)
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(f => f.Title, film.Title)
+                    .SetProperty(f => f.Genre, film.Genre)
+                    .SetProperty(f => f.Year, film.Year)
+                    .SetProperty(f => f.Director, film.Director)
+                    .SetProperty(f => f.DailyPrice, film.DailyPrice)
+                    .SetProperty(f => f.ImageUrl, film.ImageUrl)
+                    .SetProperty(f => f.About, film.About)
+                    .SetProperty(f => f.IsListed, film.IsListed)
+                    .SetProperty(f => f.TotalCopies, film.TotalCopies)
+                    .SetProperty(f => f.AvailableCopies, available)
+                    .SetProperty(f => f.Version, f => f.Version + 1),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (updated != 1)
+        {
+            return FilmUpdateOutcome.ChangedElsewhere;
+        }
 
-        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return FilmUpdateOutcome.Updated;
     }
@@ -246,5 +270,6 @@ internal sealed class FilmRepository(IDbContextFactory<FilmDbContext> contextFac
         TotalCopies = film.TotalCopies,
         AvailableCopies = film.AvailableCopies,
         IsListed = film.IsListed,
+        Version = 1,
     };
 }

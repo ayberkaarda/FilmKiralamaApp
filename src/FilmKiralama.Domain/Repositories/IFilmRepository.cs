@@ -35,9 +35,10 @@ public interface IFilmRepository
     Task<int> AddAsync(Actor actor, Film film, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Changes a film's details and its number of copies under the film's lock. The copies on the
-    /// shelf follow the new total; a total below the copies rented out is refused. The admin
-    /// <paramref name="actor"/> is checked in the same transaction.
+    /// Changes a film's details and its number of copies under the film's lock, only while the stored
+    /// film still has <see cref="Film.Version"/> of <paramref name="film"/> (the version the admin's form
+    /// loaded), and raises the version. The copies on the shelf follow the new total; a total below the
+    /// copies rented out is refused. The admin <paramref name="actor"/> is checked in the same transaction.
     /// </summary>
     /// <exception cref="ActorRevokedException"><paramref name="actor"/> is no longer a stored admin, or its session was revoked.</exception>
     Task<FilmUpdateOutcome> UpdateAsync(Actor actor, Film film, CancellationToken cancellationToken = default);
@@ -57,6 +58,9 @@ public enum FilmUpdateOutcome
 
     /// <summary>The new number of copies is below the number rented out; nothing was written.</summary>
     CopiesBelowRented = 2,
+
+    /// <summary>Another admin changed the film since the form loaded it; nothing was written.</summary>
+    ChangedElsewhere = 3,
 }
 
 public enum FilmDeleteOutcome

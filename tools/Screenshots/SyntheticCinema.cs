@@ -168,7 +168,7 @@ internal sealed class SyntheticCinema :
 
     public Task<int> AddAsync(UserSession session, FilmInput input, CancellationToken cancellationToken = default) => Task.FromResult(16);
 
-    public Task UpdateAsync(UserSession session, int filmId, FilmInput input, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task UpdateAsync(UserSession session, int filmId, int expectedVersion, FilmInput input, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public Task DeleteAsync(UserSession session, int filmId, CancellationToken cancellationToken = default) => Task.CompletedTask;
 

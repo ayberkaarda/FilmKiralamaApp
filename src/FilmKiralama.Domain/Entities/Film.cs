@@ -35,6 +35,14 @@ public sealed class Film
     /// its status to "Kirada" by hand; such films keep that state as unlisted.
     /// </summary>
     public bool IsListed { get; set; } = true;
+
+    /// <summary>
+    /// Raised by every change of the film's details through the admin's form (not by rentals and returns,
+    /// which only move <see cref="AvailableCopies"/>). A change carries the version its form loaded and is
+    /// refused once another admin changed the film since, so a stale form cannot write back an old price,
+    /// listing or number of copies. Starts at 1.
+    /// </summary>
+    public int Version { get; set; } = 1;
 }
 
 /// <summary>Distinct values the catalog can be filtered by.</summary>
