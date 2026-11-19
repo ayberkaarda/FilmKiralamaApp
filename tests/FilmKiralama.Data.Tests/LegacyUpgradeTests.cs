@@ -2,6 +2,7 @@ using FilmKiralama.Business;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Data.Persistence;
 using FilmKiralama.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using static FilmKiralama.Data.Tests.TestServices;
 
@@ -66,6 +67,9 @@ public sealed class LegacyUpgradeTests
         """;
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    /// <summary>The migrations of the model; each is recorded once, also when two starts upgrade at the same time.</summary>
+    private static int MigrationCount { get; } = new FilmDbContext(new DbContextOptionsBuilder<FilmDbContext>().UseSqlServer("Server=.").Options).Database.GetMigrations().Count();
 
     [Fact]
     public async Task Initialize_LegacyDatabase_KeepsTheRowsAndTurnsThemIntoTheNewModel()
@@ -205,7 +209,7 @@ public sealed class LegacyUpgradeTests
             Task.Run(() => a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct), Ct),
             Task.Run(() => b.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct), Ct));
 
-        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.__EFMigrationsHistory", Ct));
+        Assert.Equal(MigrationCount, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.__EFMigrationsHistory", Ct));
         Assert.Equal(0, await database.ScalarAsync("SELECT MevcutAdet FROM dbo.Filmler WHERE FilmID = 4", Ct));
         Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kiralama", Ct));
     }
@@ -231,7 +235,7 @@ public sealed class LegacyUpgradeTests
         }
 
         await initialization;
-        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.__EFMigrationsHistory", Ct));
+        Assert.Equal(MigrationCount, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.__EFMigrationsHistory", Ct));
         Assert.Equal(0, await database.ScalarAsync("SELECT MevcutAdet FROM dbo.Filmler WHERE FilmID = 4", Ct));
     }
 
