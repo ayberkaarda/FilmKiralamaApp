@@ -3,6 +3,7 @@ using FilmKiralama.Business.Security;
 using FilmKiralama.Business.Validation;
 using FilmKiralama.Domain.Entities;
 using FilmKiralama.Domain.Repositories;
+using FluentValidation;
 
 namespace FilmKiralama.Business.Services;
 
@@ -53,7 +54,8 @@ internal sealed class SetupService(
     IPasswordHasher passwordHasher,
     SetupKeyGate setupKeys,
     SetupKeyEnvironment environment,
-    IAuditLog audit) : ISetupService
+    IAuditLog audit,
+    IValidator<FirstAdminInput> validator) : ISetupService
 {
     internal const string AlreadyDone = "Kurulum zaten tamamlanmış. Lütfen giriş yapın.";
 
@@ -80,26 +82,16 @@ internal sealed class SetupService(
         string? passwordRepeat,
         CancellationToken cancellationToken = default)
     {
-        var name = userName?.Trim();
-        if (string.IsNullOrEmpty(name) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(passwordRepeat))
-        {
-            throw new BusinessRuleException(AccountRules.AllFieldsRequired);
-        }
-
         // The shop's own admin may be called "admin"; the other rules are those of a new account.
-        AccountRules.RequireValidUserName(name, allowReserved: true);
-        if (!string.Equals(password, passwordRepeat, StringComparison.Ordinal))
-        {
-            throw new BusinessRuleException(AccountRules.PasswordsDoNotMatch);
-        }
-
-        AccountRules.RequireValidPassword(password);
+        var input = FirstAdminInput.Create(userName, password, passwordRepeat);
+        validator.ValidateOrThrow(input);
+        var name = input.UserName;
 
         var attempt = setupKeys.CreateAttempt(setupKey);
         var admin = new User
         {
             UserName = name,
-            PasswordHash = passwordHasher.Hash(password),
+            PasswordHash = passwordHasher.Hash(input.Password!),
             PasswordFormat = PasswordFormat.Pbkdf2,
             Role = UserRole.Admin,
         };

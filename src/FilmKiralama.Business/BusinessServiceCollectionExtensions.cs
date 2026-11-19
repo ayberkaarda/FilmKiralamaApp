@@ -1,6 +1,8 @@
 using FilmKiralama.Business.Auditing;
 using FilmKiralama.Business.Security;
 using FilmKiralama.Business.Services;
+using FilmKiralama.Business.Validation;
+using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -28,6 +30,14 @@ public static class BusinessServiceCollectionExtensions
         services.TryAddSingleton(SetupKeyThrottle.Default);
         services.TryAddSingleton(_ => SetupKeyEnvironment.FromProcess());
         services.TryAddSingleton(rentalPolicy);
+        services.AddSingleton<IValidator<SignInInput>, SignInInputValidator>();
+        services.AddSingleton<IValidator<SignUpInput>, SignUpInputValidator>();
+        services.AddSingleton<IValidator<PasswordChangeInput>, PasswordChangeInputValidator>();
+        services.AddSingleton<IValidator<FirstAdminInput>, FirstAdminInputValidator>();
+        services.AddSingleton<IValidator<NewAccountInput>, NewAccountInputValidator>();
+        services.AddSingleton<IValidator<AccountChangeInput>, AccountChangeInputValidator>();
+        services.AddSingleton<IValidator<FilmFields>, FilmFieldsValidator>();
+        services.AddSingleton<IValidator<RentalQuoteInput>, RentalQuoteInputValidator>();
         services.AddSingleton<SetupKeyGate>();
         services.AddSingleton<IAuthService, AuthService>();
         services.AddSingleton<ISetupService, SetupService>();

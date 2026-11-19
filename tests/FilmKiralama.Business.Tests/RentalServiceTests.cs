@@ -170,5 +170,5 @@ public sealed class RentalServiceTests
         Assert.Equal(expectedProblems, policy.Validate().Count);
     }
 
-    private RentalService Service() => new(_rentals.Object, _time, _policy, _audit);
+    private RentalService Service() => new(_rentals.Object, _time, _policy, _audit, TestValidators.Quote(_policy));
 }

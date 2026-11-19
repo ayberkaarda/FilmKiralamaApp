@@ -1,8 +1,8 @@
-using System.Globalization;
 using FilmKiralama.Business.Auditing;
 using FilmKiralama.Business.Validation;
 using FilmKiralama.Domain.Entities;
 using FilmKiralama.Domain.Repositories;
+using FluentValidation;
 
 namespace FilmKiralama.Business.Services;
 
@@ -43,7 +43,11 @@ public interface IFilmService
     Task DeleteAsync(UserSession session, int filmId, CancellationToken cancellationToken = default);
 }
 
-internal sealed class FilmService(IFilmRepository films, TimeProvider timeProvider, IAuditLog audit) : IFilmService
+internal sealed class FilmService(
+    IFilmRepository films,
+    TimeProvider timeProvider,
+    IAuditLog audit,
+    IValidator<FilmFields> validator) : IFilmService
 {
     internal const string NotFound = "Film bulunamadı.";
     internal const string InputInvalid = "Lütfen gerekli alanları doldurun.";
@@ -132,84 +136,33 @@ internal sealed class FilmService(IFilmRepository films, TimeProvider timeProvid
     /// </summary>
     private Film Validate(FilmInput input, bool change)
     {
-        ArgumentNullException.ThrowIfNull(input);
+        var fields = FilmFields.Create(input, timeProvider.Today().Year, change);
+        var result = validator.Validate(fields);
+        if (!result.IsValid)
+        {
+            // One message per field (each rule stops at its first failure), in the order of the form.
+            var errors = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var failure in result.Errors)
+            {
+                errors.TryAdd(failure.PropertyName, failure.ErrorMessage);
+            }
 
-        var errors = new Dictionary<string, string>(StringComparer.Ordinal);
-        var title = Text(input.Title, nameof(FilmInput.Title), "Ad", InputRules.TitleMaxLength, errors);
-        var genre = Text(input.Genre, nameof(FilmInput.Genre), "Tür", InputRules.GenreMaxLength, errors);
-        var director = Text(input.Director, nameof(FilmInput.Director), "Yönetmen", InputRules.DirectorMaxLength, errors);
-        var about = change && string.IsNullOrWhiteSpace(input.About)
-            ? null
-            : Text(input.About, nameof(FilmInput.About), "Hakkında kısmı", InputRules.AboutMaxLength, errors);
-
-        var maxYear = timeProvider.Today().Year;
-        var yearText = input.Year?.Trim();
-        var year = 0;
-        if (string.IsNullOrEmpty(yearText))
-        {
-            errors[nameof(FilmInput.Year)] = "Yıl boş bırakılamaz.";
-        }
-        else if (!int.TryParse(yearText, NumberStyles.None, CultureInfo.InvariantCulture, out year) || year < InputRules.MinYear || year > maxYear)
-        {
-            errors[nameof(FilmInput.Year)] = string.Create(CultureInfo.InvariantCulture, $"Yıl {InputRules.MinYear} ile {maxYear} arasında olmalıdır.");
-        }
-
-        decimal price = 0m;
-        if (string.IsNullOrWhiteSpace(input.DailyPrice))
-        {
-            errors[nameof(FilmInput.DailyPrice)] = "Ücret boş bırakılamaz.";
-        }
-        else if (!InputRules.TryParseMoney(input.DailyPrice, out price) || price <= 0m || price > InputRules.MaxDailyPrice)
-        {
-            errors[nameof(FilmInput.DailyPrice)] = "Ücret sıfırdan büyük, en fazla iki ondalıklı bir tutar olmalıdır (örnek: 12,50).";
-        }
-
-        var imageUrl = string.IsNullOrWhiteSpace(input.ImageUrl) ? null : input.ImageUrl.Trim();
-        if (imageUrl is not null && !InputRules.IsValidImageUrl(imageUrl))
-        {
-            errors[nameof(FilmInput.ImageUrl)] = "Resim linki http:// veya https:// ile başlayan, en fazla 255 karakterlik bir adres olmalıdır.";
-        }
-
-        if (input.Copies < InputRules.MinCopies || input.Copies > InputRules.MaxCopies)
-        {
-            errors[nameof(FilmInput.Copies)] = string.Create(CultureInfo.InvariantCulture, $"Adet {InputRules.MinCopies} ile {InputRules.MaxCopies} arasında olmalıdır.");
-        }
-
-        if (errors.Count > 0)
-        {
             throw new BusinessRuleException(InputInvalid + "\n\n" + string.Join("\n", errors.Values), errors);
         }
 
+        var price = InputRules.TryParseMoney(fields.DailyPrice, out var parsed) ? parsed : 0m;
         return new Film
         {
-            Title = title!,
-            Genre = genre!,
-            Year = year,
-            Director = director!,
+            Title = fields.Title!.Trim(),
+            Genre = fields.Genre!.Trim(),
+            Year = FilmFieldsValidator.ParseYear(fields.Year)!.Value,
+            Director = fields.Director!.Trim(),
             DailyPrice = price,
-            ImageUrl = imageUrl,
-            About = about,
-            TotalCopies = input.Copies,
-            AvailableCopies = input.Copies,
+            ImageUrl = string.IsNullOrWhiteSpace(fields.ImageUrl) ? null : fields.ImageUrl.Trim(),
+            About = string.IsNullOrWhiteSpace(fields.About) ? null : fields.About.Trim(),
+            TotalCopies = fields.Copies,
+            AvailableCopies = fields.Copies,
             IsListed = input.IsListed,
         };
-    }
-
-    private static string? Text(string? value, string field, string label, int maxLength, Dictionary<string, string> errors)
-    {
-        var text = value?.Trim();
-        if (string.IsNullOrEmpty(text))
-        {
-            errors[field] = label + " boş bırakılamaz.";
-            return null;
-        }
-
-        if (text.Length > maxLength)
-        {
-            errors[field] = string.Create(CultureInfo.InvariantCulture, $"{label} en fazla {maxLength} karakter olabilir.");
-            return null;
-        }
-
-        return text;
     }
 }

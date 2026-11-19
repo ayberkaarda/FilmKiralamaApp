@@ -33,6 +33,7 @@ public sealed class AuthServiceTests
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().SignInAsync(userName, password, Ct));
 
         Assert.Equal(AuthService.InputRequired, error.Message);
+        Assert.Equal(["auth.sign_in.failed unknown"], _audit.Entries);
         _users.VerifyNoOtherCalls();
     }
 
@@ -241,7 +242,8 @@ public sealed class AuthServiceTests
         _users.VerifyNoOtherCalls();
     }
 
-    private AuthService Service() => new(_users.Object, _hasher, _time, _audit);
+    private AuthService Service() =>
+        new(_users.Object, _hasher, _time, _audit, TestValidators.SignIn, TestValidators.SignUp, TestValidators.PasswordChange);
 
     private void Setup(AccountCredentials account) =>
         _users.Setup(u => u.FindByUserNameAsync(UserName, It.IsAny<CancellationToken>())).ReturnsAsync(account);

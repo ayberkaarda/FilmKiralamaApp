@@ -1,7 +1,8 @@
-using System.Globalization;
 using FilmKiralama.Business.Auditing;
+using FilmKiralama.Business.Validation;
 using FilmKiralama.Domain.Entities;
 using FilmKiralama.Domain.Repositories;
+using FluentValidation;
 
 namespace FilmKiralama.Business.Services;
 
@@ -51,7 +52,8 @@ internal sealed class RentalService(
     IRentalRepository rentals,
     TimeProvider timeProvider,
     RentalPolicy policy,
-    IAuditLog audit) : IRentalService
+    IAuditLog audit,
+    IValidator<RentalQuoteInput> quoteValidator) : IRentalService
 {
     internal const string FilmNotFound = "Film bulunamadı.";
     internal const string NotAvailable = "Bu film şu anda kiralanamıyor; stokta kopyası kalmadı.";
@@ -62,28 +64,11 @@ internal sealed class RentalService(
 
     public RentalPolicy Policy => policy;
 
-    internal string DaysInvalid => string.Create(
-        CultureInfo.InvariantCulture,
-        $"Gün sayısı 1 ile {policy.MaxRentalDays} arasında olmalıdır.");
-
     public RentalQuote Quote(int filmId, decimal dailyPrice, int days)
     {
-        if (days < 1 || days > policy.MaxRentalDays)
-        {
-            throw new BusinessRuleException(DaysInvalid);
-        }
-
-        if (dailyPrice <= 0m)
-        {
-            throw new BusinessRuleException(FilmNotFound);
-        }
+        quoteValidator.ValidateOrThrow(new RentalQuoteInput(days, dailyPrice));
 
         var total = LateFeeCalculator.RentalPrice(days, dailyPrice);
-        if (total > LateFeeCalculator.MaxAmount)
-        {
-            throw new BusinessRuleException(TotalTooHigh);
-        }
-
         var today = timeProvider.Today();
         return new RentalQuote(filmId, days, dailyPrice, total, today, today.AddDays(days));
     }

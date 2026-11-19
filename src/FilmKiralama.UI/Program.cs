@@ -7,6 +7,7 @@ using FilmKiralama.Data.Persistence;
 using FilmKiralama.UI.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Serilog;
 
 namespace FilmKiralama.UI
 {
@@ -21,9 +22,36 @@ namespace FilmKiralama.UI
         [STAThread]
         private static void Main()
         {
+            Log.Logger = AppLogging.CreateLogger(AppLogging.DefaultDirectory);
+            try
+            {
+                Log.Information("Application started");
+                Run();
+            }
+            finally
+            {
+                Log.Information("Application stopped");
+                Log.CloseAndFlush();
+            }
+        }
+
+        private static void Run()
+        {
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (_, e) => ErrorReporter.Show(e.Exception);
-            AppDomain.CurrentDomain.UnhandledException += (_, e) => ErrorReporter.Show(e.ExceptionObject as Exception);
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            {
+                if (e.IsTerminating)
+                {
+                    Log.Fatal("Unhandled exception terminates the application");
+                }
+
+                ErrorReporter.Show(e.ExceptionObject as Exception);
+                if (e.IsTerminating)
+                {
+                    Log.CloseAndFlush();
+                }
+            };
 
             ApplicationConfiguration.Initialize();
 
@@ -31,6 +59,8 @@ namespace FilmKiralama.UI
             var (policy, policyProblems) = AppConfiguration.ReadRentalPolicy(configuration);
             if (policyProblems.Count > 0)
             {
+                Log.Warning("The rental settings are invalid");
+
                 // The problems name settings and limits only.
                 Dialogs.Show(
                     null,
@@ -44,6 +74,7 @@ namespace FilmKiralama.UI
             var connectionString = AppConfiguration.ResolveConnectionString(configuration);
             if (string.IsNullOrWhiteSpace(connectionString))
             {
+                Log.Warning("No database connection string is configured");
                 Dialogs.Show(
                     null,
                     "Veritabanı bağlantı ayarı bulunamadı.\n\n"
@@ -56,6 +87,11 @@ namespace FilmKiralama.UI
             }
 
             var options = new DataAccessOptions { SeedDemoData = AppConfiguration.IsDemoRequested(configuration) };
+            if (options.SeedDemoData)
+            {
+                Log.Warning("Demo mode is on: demo accounts with published passwords are added to an empty database");
+            }
+
             using var serviceProvider = ConfigureServices(connectionString, options, policy);
             bool setupRequired;
             bool adminMissing;
@@ -104,7 +140,7 @@ namespace FilmKiralama.UI
         private static ServiceProvider ConfigureServices(string connectionString, DataAccessOptions options, RentalPolicy policy)
         {
             var services = new ServiceCollection();
-            services.AddSingleton<IAuditLog, TraceAuditLog>();
+            services.AddSingleton<IAuditLog>(new SerilogAuditLog(Log.Logger));
             services.AddSqlServerDataAccess(connectionString, options);
             services.AddBusinessServices(policy);
             services.AddSingleton<IFormFactory, FormFactory>();
