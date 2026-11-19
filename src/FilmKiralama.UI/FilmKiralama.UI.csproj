@@ -8,7 +8,7 @@
     <AssemblyName>FilmKiralama</AssemblyName>
     <Product>Film Kiralama</Product>
     <NeutralLanguage>tr-TR</NeutralLanguage>
-    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
     <UserSecretsId>film-kiralama-ui</UserSecretsId>
   </PropertyGroup>
