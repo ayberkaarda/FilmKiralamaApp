@@ -1,4 +1,5 @@
 using FilmKiralama.Business;
+using FilmKiralama.Business.Reports;
 using FilmKiralama.Business.Reviews;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Business.Watchlists;
@@ -282,6 +283,66 @@ internal sealed class ControlledWatchlistService : IWatchlistService
         var film = ControlledFilmService.Film(2, "Son Vapur", "Dram");
         film.AvailableCopies = 0;
         return film;
+    }
+}
+
+/// <summary>Report calls answered by the test; exports return a small CSV at once unless held.</summary>
+internal sealed class ControlledReportService : IReportService
+{
+    private TaskCompletionSource<ExportFile> _export = new();
+
+    public List<(ReportRange Range, TaskCompletionSource<IReadOnlyList<RentalCountRow>> Answer)> MostRentedRequests { get; } = [];
+
+    public List<(ReportKind Kind, ReportRange Range)> Exports { get; } = [];
+
+    public bool HoldExports { get; set; }
+
+    public Task<IReadOnlyList<RentalCountRow>> GetMostRentedAsync(UserSession session, ReportRange range, CancellationToken cancellationToken = default)
+    {
+        var answer = new TaskCompletionSource<IReadOnlyList<RentalCountRow>>();
+        MostRentedRequests.Add((range, answer));
+        return answer.Task;
+    }
+
+    public Task<IReadOnlyList<OverdueReportRow>> GetOverdueAsync(UserSession session, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<OverdueReportRow>>([new(new OverdueRentalRow(7, "Sisli Liman", "ornek", new DateOnly(2026, 2, 20), new DateOnly(2026, 2, 25)), 5, 50m)]);
+
+    public Task<LateFeeReport> GetLateFeesAsync(UserSession session, ReportRange range, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new LateFeeReport([], 0m));
+
+    public Task<ExportFile> ExportCsvAsync(UserSession session, ReportKind kind, ReportRange range, CancellationToken cancellationToken = default)
+    {
+        Exports.Add((kind, range));
+        _export = new TaskCompletionSource<ExportFile>();
+        if (!HoldExports)
+        {
+            CompleteExport();
+        }
+
+        return _export.Task;
+    }
+
+    public void CompleteExport() => _export.SetResult(new ExportFile("rapor.csv", [0xEF, 0xBB, 0xBF, (byte)'a', (byte)';', (byte)'b']));
+}
+
+/// <summary>Recommendations of the test.</summary>
+internal sealed class ControlledRecommendationService : IRecommendationService
+{
+    public List<CatalogItem> Films { get; } = [new(ControlledFilmService.Film(1, "Sisli Liman", "Gerilim"), 4.5m, 2)];
+
+    public Task<IReadOnlyList<CatalogItem>> GetForMeAsync(UserSession session, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<CatalogItem>>([.. Films]);
+}
+
+/// <summary>A save dialog answered by the test: the path to use, or a cancel.</summary>
+internal sealed class FixedSavePrompt(string? path) : ISaveFilePrompt
+{
+    public List<string> Suggested { get; } = [];
+
+    public string? AskSavePath(string suggestedName, string filter)
+    {
+        Suggested.Add(suggestedName);
+        return path;
     }
 }
 

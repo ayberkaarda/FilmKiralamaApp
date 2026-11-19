@@ -43,12 +43,14 @@ public sealed class BrandingTests
             new DegerlendirmeForm(reviews, Sessions.User, reviews.Reviewable[0]),
             new YorumYonetimForm(reviews, Sessions.Admin),
             new IzlemeListesiForm(watchlist, forms, Sessions.User),
+            new RaporlarForm(new ControlledReportService(), Sessions.Admin, TimeProvider.System),
+            new OnerilerForm(new ControlledRecommendationService(), watchlist, forms, Sessions.User),
         ];
 
         try
         {
             Assert.Equal(
-                ["Film Kiralama", "Kayıt Ol", "Şifre Değiştir", "Film Kirala", "Kiralama Ekranı", "Kullanıcı Profili", "Yönetim Paneli", "Kiralanan Filmler", "Film Değerlendir", "Yorum Yönetimi", "İzleme Listem"],
+                ["Film Kiralama", "Kayıt Ol", "Şifre Değiştir", "Film Kirala", "Kiralama Ekranı", "Kullanıcı Profili", "Yönetim Paneli", "Kiralanan Filmler", "Film Değerlendir", "Yorum Yönetimi", "İzleme Listem", "Raporlar", "Size Önerilenler"],
                 all.Select(f => f.Text));
             Assert.All(all, f => Assert.NotNull(f.Icon));
         }
