@@ -102,10 +102,13 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 - ✅ **Filmler** ("Yönetim Paneli"): kiralamaya kapalılar dahil tüm filmlerde aynı arama alanlarıyla, sayfada 50
   filmle arama; ad, tür, yıl, yönetmen, günlük ücret, resim linki ("Resim Linki"), açıklama ("Hakkında") ve adetle
   film ekleme ("Film Ekle"), güncelleme ("Filmi Güncelle") ve silme ("Filmi Sil"). Her geçersiz alan kendi kontrolünün
-  yanında işaretlenir. Kiralama geçmişi olan film silinemez; bunun yerine kiralamaya kapatılabilir.
+  yanında işaretlenir. Kiralama geçmişi olan film silinemez; bunun yerine kiralamaya kapatılabilir. Başka bir
+  yönetici filmi değiştirmeden önce açılmış bir formdan yapılan güncelleme reddedilir ve film yeniden yüklenir;
+  böylece eski bir ücret, kiralama durumu ya da adet asla geri yazılmaz.
 - ✅ **Hesaplar** ("Kullanıcı Yönetim Paneli"): rol, e-posta ve telefonla hesap ekleme, güncelleme ve silme; yeni
-  şifre eskisinin yerine geçer ve kilidi kaldırır. Yöneticiler ve kiralaması olan hesaplar silinemez, son yönetici
-  yönetici rolünde kalır.
+  şifre eskisinin yerine geçer, kilidi kaldırır ve hesabın açık oturumlarını sonlandırır. Yöneticiler ve kiralaması
+  olan hesaplar silinemez, son yönetici yönetici rolünde kalır. Başka bir yönetici hesabın rolünü ya da şifresini
+  değiştirmeden önce açılmış bir formdan yapılan güncelleme reddedilir ve hesap yeniden yüklenir.
 - ✅ **Kiralamalar** ("Kiralanan Filmler"): tür, yönetmen ve yıla göre filtrelenebilen tüm aktif kiralamalar; iade
   alınmadan önce bugünkü gecikme ücreti gösterilir.
 
@@ -114,8 +117,9 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 - ✅ Şifreler PBKDF2-HMAC-SHA256 özeti olarak saklanır (600.000 tekrar, rastgele tuz); eski uygulamanın düz metin
   şifreleri bir sonraki başarılı girişte özetle değiştirilir.
 - ✅ 5 hatalı giriş hesabı 15 dakika kilitler; bilinmeyen hesap, yanlış şifre ve kilitli hesap aynı cevabı alır.
-- ✅ Her çağrı açık oturuma göre denetlenir ve her yetkili işlem hesabın veritabanındaki rolünü yeniden kontrol eder:
-  silinen ya da yetkisi düşürülen hesabın açık oturumundan yeniden giriş yapması istenir. Müşteriler yalnızca kendi
+- ✅ Her çağrı açık oturuma göre denetlenir ve her işlem hesabı, oturum sürümünü ve gerektiğinde saklanan rolünü kendi
+  veritabanı işleminin içinde yeniden kontrol eder: silinen, yetkisi düşürülen ya da şifresi değiştirilen hesabın açık
+  oturumundan yeniden giriş yapması istenir. Müşteriler yalnızca kendi
   kiralamalarına ulaşır; başka bir hesabın kiralaması, olmayan bir kiralamayla aynı cevabı alır.
 - ✅ Türkçe mesajlı merkezi FluentValidation doğrulayıcıları (boş alan, e-posta biçimi, parola politikası, film
   alanları, kiralama günü); yazma düğmeleri işlem sürerken tekrarlanan tıklamaları yok sayar.
@@ -397,10 +401,15 @@ Tehdit modeli için [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) dosyasına bak�
 
 - Şifreler PBKDF2 ile özetlenir; saklanan biçim kendi sütununda tutulur, böylece bir değer asla başka bir biçimde
   okunmaz.
-- Kilitleme sayaçları atomik güncellenir ve başarılı giriş yalnızca hesap hâlâ kilitsizken yazılır; eşzamanlı
-  denemeler yeni bir kilidi silemez.
-- Roller ve sahiplik servislerde denetlenir ve veritabanı komutlarında tekrarlanır; işlemi yapan hesabın saklanan
-  rolü her yetkili işlemin içinde denetlenir.
+- Hatalı giriş, yalnızca hesap (veritabanının saatine göre) kilitsizken ve denetlenen şifre ile oturum sürümü hâlâ
+  saklıyken eşleşen tek bir koşullu güncellemeyle sayılır; başarılı giriş de yalnızca hesap hâlâ kilitsiz ve
+  değişmemişken yazılır. Böylece eşzamanlı denemeler yeni bir kilidi silemez ve yeni şifreye karşı sayılmaz.
+  Veritabanına ulaşan her giriş, sonucu ne olursa olsun aynı çağrıları aynı sırayla yapar; cevap süresi ise sabit
+  değildir.
+- Roller ve sahiplik servislerde denetlenir ve veritabanı komutlarında tekrarlanır; işlemi yapan hesap, oturum
+  sürümü ve saklanan rolü her işlemin içinde denetlenir. Yeni şifre (yöneticinin verdiği ya da hesabın kendi
+  değiştirdiği) ya da yeni rol oturum sürümünü artırır ve önceki oturumları sonlandırır.
+- Hesap ve film formları yükledikleri sürümü geri gönderir; eskimiş bir formdan yapılan değişiklik hiçbir şey yazmaz.
 - Afiş adresleri veritabanından geldiği için yalnızca herkese açık adreslerden (özel bir IPv4 adresi NAT64, 6to4,
   IPv4 uyumlu, IPv4 eşlemeli ya da IPv4'e çevrilmiş bir IPv6 adresinin içine gizlendiğinde de), yönlendirmeler
   yeniden denetlenerek ve https'ten http'ye asla inmeden, en fazla 2 MB ve 10 saniye içinde indirilir; yerel yollar, ağ paylaşımları ve yerel ağ

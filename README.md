@@ -103,9 +103,12 @@ startup.
   fields, 50 a page; add ("Film Ekle"), change ("Filmi Güncelle") and delete ("Filmi Sil") films with title, genre,
   year, director, daily price, poster link ("Resim Linki"), description ("Hakkında") and copies. Every invalid field
   is marked next to its control. A film with rental history cannot be deleted; it can be closed for rental instead.
+  A change made from a form that was loaded before another admin changed the film is refused and the film is
+  loaded again, so an old price, listing state or number of copies is never written back.
 - ✅ **Accounts** ("Kullanıcı Yönetim Paneli", User Management Panel): add, change and delete accounts with role,
-  e-mail and phone; a new password replaces the old one and lifts a lock. Admins and accounts with rentals cannot
-  be deleted, and the last admin keeps the admin role.
+  e-mail and phone; a new password replaces the old one, lifts a lock and ends the account's open sessions. Admins
+  and accounts with rentals cannot be deleted, and the last admin keeps the admin role. A change made from a form
+  loaded before another admin changed the account's role or password is refused and the account is loaded again.
 - ✅ **Rentals** ("Kiralanan Filmler", Rented Films): every active rental, filterable by genre, director and year;
   taking one back shows the late fee it costs today first.
 
@@ -115,8 +118,9 @@ startup.
   the original application are replaced with a hash on the next successful sign-in.
 - ✅ 5 failed sign-ins lock the account for 15 minutes; unknown accounts, wrong passwords and locked accounts get
   the same answer.
-- ✅ Every call is checked against the signed-in session, and every privileged operation checks the account's
-  stored role again in the database: a deleted or demoted account's open session is asked to sign in again.
+- ✅ Every call is checked against the signed-in session, and every operation checks the account, its session
+  version and, where needed, its stored role again inside its own database transaction: the open session of an
+  account that was deleted, demoted or given a new password is asked to sign in again.
   Customers reach only their own rentals; another account's rental gets the same answer as a missing one.
 - ✅ Central FluentValidation validators with Turkish messages (empty fields, e-mail format, password policy, film
   fields, rental days); write buttons ignore repeated clicks while an operation is pending.
@@ -398,10 +402,15 @@ See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the threat model.
 
 - Passwords are hashed with PBKDF2; the stored format is kept in its own column, so a value is never read in
   another format.
-- Lockout counters are updated atomically, and a successful sign-in is written only while the account is still
-  unlocked, so concurrent attempts cannot clear a fresh lock.
-- Roles and ownership are checked in the services and repeated in the database statements; the stored role of the
-  acting account is checked inside every privileged operation.
+- A failed sign-in is counted by one conditional update that matches only while the account is unlocked (by the
+  database's clock) and still has the password and session version that were checked, and a successful sign-in
+  is written only while the account is still unlocked and unchanged, so concurrent attempts can neither clear a
+  fresh lock nor count against a new password. Every sign-in that reaches the database makes the same calls in
+  the same order, whatever the outcome; the response time is not constant.
+- Roles and ownership are checked in the services and repeated in the database statements; the acting account,
+  its session version and its stored role are checked inside every operation. A new password (set by an admin or
+  by the account itself) or a new role raises the session version and ends the sessions issued before.
+- The account and film forms send back the version they loaded; a change from a stale form writes nothing.
 - Poster addresses come from the database, so they are downloaded only from public addresses (also when a private
   IPv4 address hides in a NAT64, 6to4, IPv4-compatible, IPv4-mapped or IPv4-translated IPv6 address), with redirects
   checked again and never from https to http, at most 2 MB and within 10 seconds; local paths, network shares and local network addresses are
