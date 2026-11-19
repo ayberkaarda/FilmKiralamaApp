@@ -146,7 +146,13 @@ internal sealed class PosterLoader : IDisposable
                         return null;
                     }
 
-                    current = location.IsAbsoluteUri ? location : new Uri(current, location);
+                    var next = location.IsAbsoluteUri ? location : new Uri(current, location);
+                    if (!IsAllowedRedirect(current, next))
+                    {
+                        return null;
+                    }
+
+                    current = next;
                     continue;
                 }
 
@@ -173,6 +179,19 @@ internal sealed class PosterLoader : IDisposable
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Whether a redirect from <paramref name="from"/> to <paramref name="to"/> may be followed: the new
+    /// address must pass the same rules, and an https address never leads to plain http.
+    /// </summary>
+    internal static bool IsAllowedRedirect(Uri from, Uri to)
+    {
+        ArgumentNullException.ThrowIfNull(from);
+        ArgumentNullException.ThrowIfNull(to);
+
+        return UrlGuard.IsAllowedUri(to)
+            && !(from.Scheme == Uri.UriSchemeHttps && to.Scheme != Uri.UriSchemeHttps);
     }
 
     /// <summary>The image in <paramref name="bytes"/> as a bitmap of its own, or <see langword="null"/>.</summary>

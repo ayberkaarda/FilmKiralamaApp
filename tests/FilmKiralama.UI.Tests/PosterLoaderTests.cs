@@ -301,6 +301,19 @@ public sealed class PosterLoaderTests
         }
     }
 
+    /// <summary>A redirect may not leave https for http; other redirects follow the address rules.</summary>
+    [Theory]
+    [InlineData("https://a.example/p.png", "http://a.example/p.png", false)]
+    [InlineData("https://a.example/p.png", "HTTP://b.example/p.png", false)]
+    [InlineData("https://a.example/p.png", "https://b.example/p.png", true)]
+    [InlineData("http://a.example/p.png", "https://b.example/p.png", true)]
+    [InlineData("http://a.example/p.png", "http://b.example/p.png", true)]
+    [InlineData("https://a.example/p.png", "file:///C:/p.png", false)]
+    public void Redirect_FromHttpsToHttp_IsRefused(string from, string to, bool allowed)
+    {
+        Assert.Equal(allowed, PosterLoader.IsAllowedRedirect(new Uri(from), new Uri(to)));
+    }
+
     /// <summary>A GIF frame may be larger than the screen the file declares; every frame is checked.</summary>
     [Fact]
     public void Decode_GifFrameLargerThanItsScreen_IsRefused()
