@@ -44,6 +44,33 @@ public sealed class PosterLoaderTests
         Assert.False(UrlGuard.IsPublicAddress(IPAddress.Parse(address)));
     }
 
+    /// <summary>
+    /// IPv6 transition forms that carry an IPv4 address are judged by that address: a private, loopback,
+    /// link-local or cloud metadata address hidden in NAT64, 6to4, IPv4-compatible, IPv4-mapped or
+    /// IPv4-translated form is refused.
+    /// </summary>
+    [Theory]
+    [InlineData("64:ff9b::7f00:1")]          // NAT64, 127.0.0.1
+    [InlineData("64:ff9b::a9fe:a9fe")]       // NAT64, 169.254.169.254
+    [InlineData("64:ff9b::c0a8:101")]        // NAT64, 192.168.1.1
+    [InlineData("64:ff9b:1::a00:1")]         // local-use NAT64
+    [InlineData("64:ff9b:1:ffff::808:808")]  // local-use NAT64, whatever it carries
+    [InlineData("2002:a00:1::")]             // 6to4, 10.0.0.1
+    [InlineData("2002:a9fe:a9fe::1")]        // 6to4, 169.254.169.254
+    [InlineData("2002:c0a8:101:1::1")]       // 6to4, 192.168.1.1
+    [InlineData("::10.0.0.1")]               // IPv4-compatible
+    [InlineData("::169.254.169.254")]        // IPv4-compatible
+    [InlineData("::ffff:10.0.0.1")]          // IPv4-mapped
+    [InlineData("::ffff:172.16.5.4")]        // IPv4-mapped
+    [InlineData("::ffff:0:a00:1")]           // IPv4-translated (SIIT), 10.0.0.1
+    [InlineData("::ffff:0:a9fe:a9fe")]       // IPv4-translated (SIIT), 169.254.169.254
+    [InlineData("2001:db8::1")]              // documentation
+    [InlineData("100::1")]                   // discard-only
+    public void UrlGuard_RefusesPrivateAddressesInIPv6TransitionForms(string address)
+    {
+        Assert.False(UrlGuard.IsPublicAddress(IPAddress.Parse(address)));
+    }
+
     [Theory]
     [InlineData("93.184.215.14")]
     [InlineData("8.8.8.8")]
@@ -51,6 +78,9 @@ public sealed class PosterLoaderTests
     [InlineData("2606:4700:4700::1111")]
     [InlineData("::ffff:8.8.8.8")]
     [InlineData("2002:808:808::1")]
+    [InlineData("64:ff9b::808:808")]
+    [InlineData("::ffff:0:808:808")]
+    [InlineData("::8.8.8.8")]
     public void UrlGuard_AllowsPublicAddresses(string address)
     {
         Assert.True(UrlGuard.IsPublicAddress(IPAddress.Parse(address)));
