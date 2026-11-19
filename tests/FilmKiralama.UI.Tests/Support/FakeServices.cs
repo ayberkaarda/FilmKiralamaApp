@@ -45,6 +45,51 @@ internal sealed class PendingAuthService : IAuthService
     public void CompleteRegister() => _register.SetResult();
 }
 
+/// <summary>First-run setup calls that stay pending until the test completes them.</summary>
+internal sealed class PendingSetupService : ISetupService
+{
+    private TaskCompletionSource<UserSession> _create = new();
+
+    public int CreateCalls { get; private set; }
+
+    /// <summary>What the fake FILM_SETUP_KEY fills in.</summary>
+    public SetupKeyPrefill Prefill { get; set; } = new(null, false);
+
+    public Task<bool> IsSetupRequiredAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+
+    public Task<bool> IsAdminMissingAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+
+    public SetupKeyPrefill GetEnvironmentKey() => Prefill;
+
+    public Task<UserSession> CreateFirstAdminAsync(string? setupKey, string? userName, string? password, string? passwordRepeat, CancellationToken cancellationToken = default)
+    {
+        CreateCalls++;
+        _create = new TaskCompletionSource<UserSession>();
+        return _create.Task;
+    }
+
+    public void CompleteCreate() => _create.SetResult(Sessions.Admin);
+}
+
+/// <summary>Account calls; the list comes from <see cref="Accounts"/>, writes complete at once.</summary>
+internal sealed class ControlledAccountService : IAccountService
+{
+    public List<UserSummary> Accounts { get; } =
+    [
+        new(1, "yonetici", "yonetici@example.com", "555 010 2030", UserRole.Admin),
+        new(2, "ornek", "ornek@example.com", null, UserRole.User),
+    ];
+
+    public Task<IReadOnlyList<UserSummary>> GetAllAsync(UserSession session, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<UserSummary>>([.. Accounts]);
+
+    public Task<int> AddAsync(UserSession session, AccountInput input, CancellationToken cancellationToken = default) => Task.FromResult(3);
+
+    public Task UpdateAsync(UserSession session, int userId, AccountInput input, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public Task DeleteAsync(UserSession session, int userId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+}
+
 /// <summary>Film calls answered by the test: catalog requests in any order, writes when it says so.</summary>
 internal sealed class ControlledFilmService : IFilmService
 {
