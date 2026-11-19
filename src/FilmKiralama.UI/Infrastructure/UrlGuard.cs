@@ -58,19 +58,37 @@ internal static class UrlGuard
             return false;
         }
 
-        // ::/96 (unspecified, loopback, IPv4-compatible) and the NAT64 prefix 64:ff9b::/96 carry an IPv4 address.
-        if (b.AsSpan(0, 12).IndexOfAnyExcept((byte)0) < 0
-            || (b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xFF && b[3] == 0x9B && b.AsSpan(4, 8).IndexOfAnyExcept((byte)0) < 0))
+        // Forms that carry an IPv4 address in their last 32 bits are judged by that address: ::/96
+        // (unspecified, loopback, IPv4-compatible ::a.b.c.d), the IPv4-translated ::ffff:0:a.b.c.d
+        // (SIIT) and the well-known NAT64 prefix 64:ff9b::/96. IPv4-mapped addresses were mapped above.
+        if (IsZero(b, 0, 12) || (IsZero(b, 0, 8) && b[8] == 0xFF && b[9] == 0xFF && IsZero(b, 10, 2)) || IsNat64(b))
         {
             return IsPublicAddress(new IPAddress(b.AsSpan(12, 4)));
         }
 
-        // 6to4 (2002::/16) carries an IPv4 address; Teredo (2001:0::/32) tunnels to any.
+        // The local-use NAT64 prefix 64:ff9b:1::/48 translates to addresses of the local network only.
+        if (b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xFF && b[3] == 0x9B && b[4] == 0x00 && b[5] == 0x01)
+        {
+            return false;
+        }
+
+        // 6to4 (2002::/16) carries an IPv4 address in bits 16 to 47.
         if (b[0] == 0x20 && b[1] == 0x02)
         {
             return IsPublicAddress(new IPAddress(b.AsSpan(2, 4)));
         }
 
-        return !(b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x00 && b[3] == 0x00);
+        // Teredo (2001:0::/32) tunnels to any address; documentation (2001:db8::/32) and discard-only
+        // (100::/64) addresses are never real servers.
+        return !((b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x00 && b[3] == 0x00)
+            || (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0D && b[3] == 0xB8)
+            || (b[0] == 0x01 && b[1] == 0x00 && IsZero(b, 2, 6)));
     }
+
+    /// <summary>The well-known NAT64 prefix 64:ff9b::/96.</summary>
+    private static bool IsNat64(byte[] b) =>
+        b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xFF && b[3] == 0x9B && IsZero(b, 4, 8);
+
+    private static bool IsZero(byte[] bytes, int start, int length) =>
+        bytes.AsSpan(start, length).IndexOfAnyExcept((byte)0) < 0;
 }
