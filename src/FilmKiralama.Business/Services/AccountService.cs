@@ -43,7 +43,7 @@ internal sealed class AccountService(
     public Task<IReadOnlyList<UserSummary>> GetAllAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
-        return audit.AsActorAsync(session, () => users.GetAllAsync(session.UserId, cancellationToken));
+        return audit.AsActorAsync(session, () => users.GetAllAsync(session.Actor, cancellationToken));
     }
 
     public async Task<int> AddAsync(UserSession session, AccountInput input, CancellationToken cancellationToken = default)
@@ -67,7 +67,7 @@ internal sealed class AccountService(
                 Email = email,
                 Phone = phone,
             };
-            var id = await audit.AsActorAsync(session, () => users.AddAsync(user, session.UserId, cancellationToken)).ConfigureAwait(false);
+            var id = await audit.AsActorAsync(session, () => users.AddAsync(user, session.Actor, cancellationToken)).ConfigureAwait(false);
             audit.Record(AuditEvent.AccountChanged, AuditRole.Admin);
             return id;
         }
@@ -93,7 +93,7 @@ internal sealed class AccountService(
         try
         {
             var update = new AccountUpdate(userId, name, email, phone, input.Role, newHash);
-            outcome = await audit.AsActorAsync(session, () => users.UpdateAsync(session.UserId, update, cancellationToken)).ConfigureAwait(false);
+            outcome = await audit.AsActorAsync(session, () => users.UpdateAsync(session.Actor, update, cancellationToken)).ConfigureAwait(false);
         }
         catch (DuplicateAccountException ex)
         {
@@ -115,7 +115,7 @@ internal sealed class AccountService(
     public async Task DeleteAsync(UserSession session, int userId, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
-        var outcome = await audit.AsActorAsync(session, () => users.DeleteAsync(session.UserId, userId, cancellationToken)).ConfigureAwait(false);
+        var outcome = await audit.AsActorAsync(session, () => users.DeleteAsync(session.Actor, userId, cancellationToken)).ConfigureAwait(false);
         switch (outcome)
         {
             case AccountDeleteOutcome.Deleted:

@@ -344,6 +344,54 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.False(await check.Users.AnyAsync(u => u.Id == b || u.UserName == "ikinci", Ct));
     }
 
+    /// <summary>
+    /// The stored session version decides too: once it differs from the one a session carries, that
+    /// session reads and writes nothing, as an admin or as a customer, even though the account still exists
+    /// with the same role.
+    /// </summary>
+    [Fact]
+    public async Task SessionWithAnOutdatedVersion_IsRefusedEverywhere()
+    {
+        var auth = _db.Get<IAuthService>();
+        var admin = await auth.SignInAsync("yonetici", "Demo.Yonetici1", Ct);
+        var customer = await auth.SignInAsync("ornek", "Demo.Kullanici1", Ct);
+        var rental = await RentAsync(_db.Services, customer, ThreeCopiesFilmId);
+        await using (var db = _db.CreateContext())
+        {
+            await db.Users.ExecuteUpdateAsync(s => s.SetProperty(u => u.SessionVersion, u => u.SessionVersion + 1), Ct);
+        }
+
+        var films = _db.Get<IFilmService>();
+        var rentals = _db.Get<IRentalService>();
+        List<Func<Task>> refused =
+        [
+            () => _db.Get<IAccountService>().GetAllAsync(admin, Ct),
+            () => films.AddAsync(admin, new FilmInput("Yeni", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 1, true), Ct),
+            () => films.GetAllAsync(admin, Ct),
+            () => rentals.ReturnAsync(admin, rental.RentalId, Ct),
+            () => rentals.ReturnAsync(customer, rental.RentalId, Ct),
+            () => rentals.GetMyActiveRentalsAsync(customer, Ct),
+            () => films.SearchCatalogAsync(customer, new CatalogQuery(), Ct),
+            async () => await rentals.RentAsync(customer, await rentals.QuoteAsync(SingleCopyFilmId, 25m, 1, Ct), Ct),
+        ];
+        foreach (var operation in refused)
+        {
+            Assert.Equal(AccessDeniedException.SessionRevokedMessage, (await Assert.ThrowsAsync<AccessDeniedException>(operation)).Message);
+        }
+
+        await using (var check = _db.CreateContext())
+        {
+            Assert.False(await check.Films.AnyAsync(f => f.Title == "Yeni", Ct));
+        }
+
+        Assert.Equal(2, await AvailableAsync(ThreeCopiesFilmId));
+
+        // A new sign-in carries the stored version and works again.
+        var renewed = await auth.SignInAsync("ornek", "Demo.Kullanici1", Ct);
+        Assert.Equal(1, renewed.SessionVersion);
+        await rentals.ReturnAsync(renewed, rental.RentalId, Ct);
+    }
+
     /// <summary>A customer cannot make itself an admin, whatever its session says.</summary>
     [Fact]
     public async Task UserSession_CannotRaiseItsOwnRole()

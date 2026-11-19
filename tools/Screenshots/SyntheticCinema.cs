@@ -108,7 +108,7 @@ internal sealed class SyntheticCinema :
             typeof(UserSession),
             BindingFlags.Instance | BindingFlags.NonPublic,
             binder: null,
-            args: [id, name, role],
+            args: [id, name, role, 0],
             culture: null)!;
 
     private static RentalDetails Rental(int id, CatalogItem item, int userId, string userName, DateOnly rentedOn, int days) =>

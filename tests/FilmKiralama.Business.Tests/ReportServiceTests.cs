@@ -36,7 +36,7 @@ public sealed class ReportServiceTests
     [Fact]
     public async Task Reports_ForARevokedAdmin_AskToSignInAgain()
     {
-        _reports.Setup(r => r.GetLateFeesAsync(Sessions.Admin.UserId, March.From, March.To, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
+        _reports.Setup(r => r.GetLateFeesAsync(Sessions.Admin.Actor, March.From, March.To, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
 
         var error = await Assert.ThrowsAsync<AccessDeniedException>(() => Service().GetLateFeesAsync(Sessions.Admin, March, Ct));
 
@@ -52,7 +52,7 @@ public sealed class ReportServiceTests
     public async Task Range_FromOneDayToTheLimit_IsAccepted(int days, bool accepted)
     {
         var range = new ReportRange(new DateOnly(2020, 1, 1), new DateOnly(2020, 1, 1).AddDays(days));
-        _reports.Setup(r => r.GetMostRentedAsync(Sessions.Admin.UserId, range.From, range.To, ReportPolicy.TopFilms, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _reports.Setup(r => r.GetMostRentedAsync(Sessions.Admin.Actor, range.From, range.To, ReportPolicy.TopFilms, It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
         if (accepted)
         {
@@ -70,7 +70,7 @@ public sealed class ReportServiceTests
     public async Task Overdue_CountsTheDaysByTheDatabaseClock()
     {
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 3, 5, 10, 0, 0, TimeSpan.Zero));
-        _reports.Setup(r => r.GetOverdueAsync(Sessions.Admin.UserId, new DateOnly(2026, 3, 5), It.IsAny<CancellationToken>()))
+        _reports.Setup(r => r.GetOverdueAsync(Sessions.Admin.Actor, new DateOnly(2026, 3, 5), It.IsAny<CancellationToken>()))
             .ReturnsAsync([new OverdueRentalRow(7, "Film", "ornek", Today.AddDays(-5), Today.AddDays(-1))]);
 
         var row = Assert.Single(await Service(clock).GetOverdueAsync(Sessions.Admin, Ct));
@@ -82,7 +82,7 @@ public sealed class ReportServiceTests
     [Fact]
     public async Task LateFees_AreSummedInDecimal()
     {
-        _reports.Setup(r => r.GetLateFeesAsync(Sessions.Admin.UserId, March.From, March.To, It.IsAny<CancellationToken>()))
+        _reports.Setup(r => r.GetLateFeesAsync(Sessions.Admin.Actor, March.From, March.To, It.IsAny<CancellationToken>()))
             .ReturnsAsync([Fee(1, 10.10m), Fee(2, 20.20m), Fee(3, 0.70m)]);
 
         var report = await Service().GetLateFeesAsync(Sessions.Admin, March, Ct);
@@ -93,7 +93,7 @@ public sealed class ReportServiceTests
     [Fact]
     public async Task LateFees_NoneInThePeriod_IsAnEmptyReportWithZeroTotal()
     {
-        _reports.Setup(r => r.GetLateFeesAsync(Sessions.Admin.UserId, March.From, March.To, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _reports.Setup(r => r.GetLateFeesAsync(Sessions.Admin.Actor, March.From, March.To, It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
         var file = await Service().ExportCsvAsync(Sessions.Admin, ReportKind.LateFees, March, Ct);
 
@@ -109,7 +109,7 @@ public sealed class ReportServiceTests
     [Fact]
     public async Task Csv_IsSpreadsheetSafe()
     {
-        _reports.Setup(r => r.GetLateFeesAsync(Sessions.Admin.UserId, March.From, March.To, It.IsAny<CancellationToken>()))
+        _reports.Setup(r => r.GetLateFeesAsync(Sessions.Admin.Actor, March.From, March.To, It.IsAny<CancellationToken>()))
             .ReturnsAsync(
             [
                 new LateFeeRow(1, "=HYPERLINK(\"http://kotu.example\")", "-ali", Today, Today.AddDays(2), 20m),
@@ -152,7 +152,7 @@ public sealed class ReportServiceTests
         clock.SetupSequence(c => c.GetUtcNowAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DateTime(2026, 3, 5, 23, 59, 59, DateTimeKind.Utc))
             .ReturnsAsync(new DateTime(2026, 3, 6, 0, 0, 1, DateTimeKind.Utc));
-        _reports.Setup(r => r.GetOverdueAsync(Sessions.Admin.UserId, new DateOnly(2026, 3, 5), It.IsAny<CancellationToken>()))
+        _reports.Setup(r => r.GetOverdueAsync(Sessions.Admin.Actor, new DateOnly(2026, 3, 5), It.IsAny<CancellationToken>()))
             .ReturnsAsync([new OverdueRentalRow(7, "Film", "ornek", Today.AddDays(-5), Today.AddDays(-1))]);
         var service = new ReportService(_reports.Object, clock.Object, _time, new RentalPolicy { DailyLateFee = 7.5m, MaxRentalDays = 30 }, _audit, new ReportRangeValidator());
 
@@ -184,7 +184,7 @@ public sealed class ReportServiceTests
     [Fact]
     public async Task Csv_MostRented_NamesTheReportAndPeriodOnly()
     {
-        _reports.Setup(r => r.GetMostRentedAsync(Sessions.Admin.UserId, March.From, March.To, ReportPolicy.TopFilms, It.IsAny<CancellationToken>()))
+        _reports.Setup(r => r.GetMostRentedAsync(Sessions.Admin.Actor, March.From, March.To, ReportPolicy.TopFilms, It.IsAny<CancellationToken>()))
             .ReturnsAsync([new RentalCountRow(4, "Sisli Liman", "Gerilim", 7), new RentalCountRow(2, "Son Vapur", "Dram", 3)]);
 
         var file = await Service().ExportCsvAsync(Sessions.Admin, ReportKind.MostRented, March, Ct);
@@ -198,10 +198,10 @@ public sealed class ReportServiceTests
     [Fact]
     public async Task Recommendations_WithoutAnyRental_AreEmpty()
     {
-        _reports.Setup(r => r.GetRentedGenresAsync(Sessions.User.UserId, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _reports.Setup(r => r.GetRentedGenresAsync(Sessions.User.Actor, It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
         Assert.Empty(await Recommendations().GetForMeAsync(Sessions.User, Ct));
-        _reports.Verify(r => r.GetUnrentedAvailableAsync(It.IsAny<int>(), It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()), Times.Never);
+        _reports.Verify(r => r.GetUnrentedAvailableAsync(It.IsAny<Actor>(), It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     /// <summary>Every genre tied for the most rentals is used; the best rated come first, unrated last, at most eight.</summary>
@@ -209,10 +209,10 @@ public sealed class ReportServiceTests
     public async Task Recommendations_TakeTheMostRentedGenresAndOrderByRating()
     {
         IReadOnlyCollection<string>? asked = null;
-        _reports.Setup(r => r.GetRentedGenresAsync(Sessions.User.UserId, It.IsAny<CancellationToken>()))
+        _reports.Setup(r => r.GetRentedGenresAsync(Sessions.User.Actor, It.IsAny<CancellationToken>()))
             .ReturnsAsync([new GenreCount("Dram", 3), new GenreCount("Komedi", 3), new GenreCount("Gerilim", 1)]);
-        _reports.Setup(r => r.GetUnrentedAvailableAsync(Sessions.User.UserId, It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
-            .Callback<int, IReadOnlyCollection<string>, CancellationToken>((_, genres, _) => asked = genres)
+        _reports.Setup(r => r.GetUnrentedAvailableAsync(Sessions.User.Actor, It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .Callback<Actor, IReadOnlyCollection<string>, CancellationToken>((_, genres, _) => asked = genres)
             .ReturnsAsync(
             [
                 Entry(1, "Zeta", 0, 0),

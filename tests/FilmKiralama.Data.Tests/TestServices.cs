@@ -46,9 +46,9 @@ internal static class TestServices
         return services;
     }
 
-    public static UserSession User(int id) => new(id, "kullanici" + id.ToString(CultureInfo.InvariantCulture), UserRole.User);
+    public static UserSession User(int id) => new(id, "kullanici" + id.ToString(CultureInfo.InvariantCulture), UserRole.User, sessionVersion: 0);
 
-    public static UserSession Admin(int id) => new(id, "yonetici" + id.ToString(CultureInfo.InvariantCulture), UserRole.Admin);
+    public static UserSession Admin(int id) => new(id, "yonetici" + id.ToString(CultureInfo.InvariantCulture), UserRole.Admin, sessionVersion: 0);
 
     /// <summary>Registers a customer through the real service and returns its session.</summary>
     public static async Task<UserSession> RegisterAsync(IServiceProvider provider, string name, int number)

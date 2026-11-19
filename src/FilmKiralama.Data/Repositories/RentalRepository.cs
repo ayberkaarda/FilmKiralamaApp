@@ -17,7 +17,7 @@ internal sealed class RentalRepository(IDbContextFactory<FilmDbContext> contextF
         // Taken before anything is read: no other rental, return or stock change of this film can run
         // between the checks below and the commit.
         await Locks.FilmAsync(db, request.FilmId, cancellationToken).ConfigureAwait(false);
-        await Actors.RequireAsync(db, request.UserId, admin: false, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, request.Actor, admin: false, cancellationToken).ConfigureAwait(false);
 
         var film = await db.Films
             .AsNoTracking()
@@ -107,7 +107,7 @@ internal sealed class RentalRepository(IDbContextFactory<FilmDbContext> contextF
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
         // Checked first, so a revoked admin learns nothing about other accounts' rentals.
-        await Actors.RequireAsync(db, actor.UserId, actor.AsAdmin, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor.Actor, actor.AsAdmin, cancellationToken).ConfigureAwait(false);
         var ownerId = OwnerOf(actor);
 
         // The film decides which lock to take; a rental of another account is the same as none.
@@ -169,7 +169,7 @@ internal sealed class RentalRepository(IDbContextFactory<FilmDbContext> contextF
         ArgumentNullException.ThrowIfNull(filter);
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        await Actors.RequireAsync(db, actor.UserId, actor.AsAdmin, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor.Actor, actor.AsAdmin, cancellationToken).ConfigureAwait(false);
         var query =
             from rental in Owned(db.Rentals.AsNoTracking(), OwnerOf(actor))
             join film in FilmRepository.Matching(db.Films.AsNoTracking(), filter) on rental.FilmId equals film.Id

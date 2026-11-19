@@ -7,12 +7,12 @@ namespace FilmKiralama.Data.Repositories;
 
 internal sealed class ReportRepository(IDbContextFactory<FilmDbContext> contextFactory) : IReportRepository
 {
-    public async Task<IReadOnlyList<RentalCountRow>> GetMostRentedAsync(int adminId, DateOnly firstDay, DateOnly lastDay, int top, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<RentalCountRow>> GetMostRentedAsync(Actor actor, DateOnly firstDay, DateOnly lastDay, int top, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(top, 1);
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor, admin: true, cancellationToken).ConfigureAwait(false);
         var counts =
             from rental in db.Rentals.AsNoTracking()
             where rental.RentedOn >= firstDay && rental.RentedOn <= lastDay
@@ -29,10 +29,10 @@ internal sealed class ReportRepository(IDbContextFactory<FilmDbContext> contextF
         return [.. rows.Select(r => new RentalCountRow(r.Id, r.Title, r.Genre, r.Rentals))];
     }
 
-    public async Task<IReadOnlyList<OverdueRentalRow>> GetOverdueAsync(int adminId, DateOnly today, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<OverdueRentalRow>> GetOverdueAsync(Actor actor, DateOnly today, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor, admin: true, cancellationToken).ConfigureAwait(false);
         var rows = await (
                 from rental in db.Rentals.AsNoTracking()
                 join film in db.Films.AsNoTracking() on rental.FilmId equals film.Id
@@ -45,10 +45,10 @@ internal sealed class ReportRepository(IDbContextFactory<FilmDbContext> contextF
         return [.. rows.Select(r => new OverdueRentalRow(r.Id, r.Title, r.UserName, r.RentedOn, r.DueOn!.Value))];
     }
 
-    public async Task<IReadOnlyList<LateFeeRow>> GetLateFeesAsync(int adminId, DateOnly firstDay, DateOnly lastDay, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<LateFeeRow>> GetLateFeesAsync(Actor actor, DateOnly firstDay, DateOnly lastDay, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor, admin: true, cancellationToken).ConfigureAwait(false);
         var rows = await (
                 from rental in db.Rentals.AsNoTracking()
                 join film in db.Films.AsNoTracking() on rental.FilmId equals film.Id
@@ -65,10 +65,11 @@ internal sealed class ReportRepository(IDbContextFactory<FilmDbContext> contextF
         return [.. rows.Where(r => r.LateFee > 0m).Select(r => new LateFeeRow(r.Id, r.Title, r.UserName, r.DueOn!.Value, r.ReturnedOn!.Value, r.LateFee!.Value))];
     }
 
-    public async Task<IReadOnlyList<GenreCount>> GetRentedGenresAsync(int userId, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<GenreCount>> GetRentedGenresAsync(Actor actor, CancellationToken cancellationToken = default)
     {
+        var userId = actor.UserId;
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        await Actors.RequireAsync(db, userId, admin: false, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor, admin: false, cancellationToken).ConfigureAwait(false);
         var rows = await (
                 from rental in db.Rentals.AsNoTracking()
                 join film in db.Films.AsNoTracking() on rental.FilmId equals film.Id
@@ -80,8 +81,9 @@ internal sealed class ReportRepository(IDbContextFactory<FilmDbContext> contextF
         return [.. rows.Select(r => new GenreCount(r.Genre, r.Rentals))];
     }
 
-    public async Task<IReadOnlyList<CatalogEntry>> GetUnrentedAvailableAsync(int userId, IReadOnlyCollection<string> genres, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CatalogEntry>> GetUnrentedAvailableAsync(Actor actor, IReadOnlyCollection<string> genres, CancellationToken cancellationToken = default)
     {
+        var userId = actor.UserId;
         ArgumentNullException.ThrowIfNull(genres);
         if (genres.Count == 0)
         {
@@ -90,7 +92,7 @@ internal sealed class ReportRepository(IDbContextFactory<FilmDbContext> contextF
 
         var wanted = genres.ToList();
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        await Actors.RequireAsync(db, userId, admin: false, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor, admin: false, cancellationToken).ConfigureAwait(false);
         var rows = await db.Films
             .AsNoTracking()
             .Where(f => f.IsListed && f.AvailableCopies > 0 && wanted.Contains(f.Genre))

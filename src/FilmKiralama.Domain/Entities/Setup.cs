@@ -30,7 +30,10 @@ public sealed class SetupKey
     public DateTime? ConsumedAt { get; set; }
 }
 
-/// <summary>What a sign-in needs to know about an account.</summary>
+/// <summary>
+/// What a sign-in needs to know about an account; <see cref="SessionVersion"/> is the version a session
+/// issued from it carries.
+/// </summary>
 public sealed record AccountCredentials(
     int Id,
     string UserName,
@@ -38,7 +41,8 @@ public sealed record AccountCredentials(
     string PasswordHash,
     PasswordFormat PasswordFormat,
     int FailedLoginCount,
-    DateTime? LockoutEnd);
+    DateTime? LockoutEnd,
+    int SessionVersion);
 
 /// <summary>A usable setup key, as a given key is compared with it.</summary>
 public sealed record StoredSetupKey(int Id, byte[] KeyHash);

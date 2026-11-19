@@ -119,7 +119,7 @@ internal sealed class AuthService(
         }
 
         audit.Record(AuditEvent.SignInSucceeded, role);
-        return new UserSession(account.Id, account.UserName, account.Role);
+        return new UserSession(account.Id, account.UserName, account.Role, account.SessionVersion);
     }
 
     public async Task RegisterAsync(

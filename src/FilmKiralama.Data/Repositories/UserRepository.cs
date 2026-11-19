@@ -17,7 +17,7 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         return await db.Users
             .AsNoTracking()
             .Where(u => u.UserName == userName)
-            .Select(u => new AccountCredentials(u.Id, u.UserName, u.Role, u.PasswordHash, u.PasswordFormat, u.FailedLoginCount, u.LockoutEnd))
+            .Select(u => new AccountCredentials(u.Id, u.UserName, u.Role, u.PasswordHash, u.PasswordFormat, u.FailedLoginCount, u.LockoutEnd, u.SessionVersion))
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -28,15 +28,15 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         return await db.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => new AccountCredentials(u.Id, u.UserName, u.Role, u.PasswordHash, u.PasswordFormat, u.FailedLoginCount, u.LockoutEnd))
+            .Select(u => new AccountCredentials(u.Id, u.UserName, u.Role, u.PasswordHash, u.PasswordFormat, u.FailedLoginCount, u.LockoutEnd, u.SessionVersion))
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<IReadOnlyList<UserSummary>> GetAllAsync(int adminId, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<UserSummary>> GetAllAsync(Actor actor, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor, admin: true, cancellationToken).ConfigureAwait(false);
         return await db.Users
             .AsNoTracking()
             .OrderBy(u => u.Id)
@@ -76,7 +76,7 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         return taken;
     }
 
-    public async Task<int> AddAsync(User user, int? adminId, CancellationToken cancellationToken = default)
+    public async Task<int> AddAsync(User user, Actor? actor, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
 
@@ -84,7 +84,7 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         {
             await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            if (adminId is { } admin)
+            if (actor is { } admin)
             {
                 await Actors.RequireAsync(db, admin, admin: true, cancellationToken).ConfigureAwait(false);
             }
@@ -112,7 +112,7 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         }
     }
 
-    public async Task<AccountUpdateOutcome> UpdateAsync(int adminId, AccountUpdate update, CancellationToken cancellationToken = default)
+    public async Task<AccountUpdateOutcome> UpdateAsync(Actor actor, AccountUpdate update, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(update);
 
@@ -124,7 +124,7 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
 
             // Decided under the lock that every role change takes: an admin demoted concurrently has lost
             // the role here already, so it can neither change accounts nor give the role back to itself.
-            await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+            await Actors.RequireAsync(db, actor, admin: true, cancellationToken).ConfigureAwait(false);
 
             var id = update.UserId;
             var keepsAdmin = update.Role == UserRole.Admin;
@@ -175,11 +175,11 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         }
     }
 
-    public async Task<AccountDeleteOutcome> DeleteAsync(int adminId, int userId, CancellationToken cancellationToken = default)
+    public async Task<AccountDeleteOutcome> DeleteAsync(Actor actor, int userId, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-        await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor, admin: true, cancellationToken).ConfigureAwait(false);
 
         // One statement decides: no admin, no rental history.
         var deleted = await db.Users

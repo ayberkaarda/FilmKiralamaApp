@@ -29,7 +29,7 @@ internal static class Access
     /// The account a rental operation of the session acts for: an admin reaches every account's
     /// rentals, anyone else their own.
     /// </summary>
-    public static RentalActor RentalActorOf(UserSession session) => new(session.UserId, session.IsAdmin);
+    public static RentalActor RentalActorOf(UserSession session) => new(session.UserId, session.IsAdmin, session.SessionVersion);
 
     /// <summary>
     /// Runs a repository call for <paramref name="session"/>. When the stored account no longer exists

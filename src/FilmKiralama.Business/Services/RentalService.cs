@@ -87,7 +87,7 @@ internal sealed class RentalService(
         // price that has changed since.
         var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
         var current = QuoteFrom(today, quote.FilmId, quote.DailyPrice, quote.Days);
-        var request = new RentalRequest(current.FilmId, session.UserId, current.StartsOn, current.DueOn, current.DailyPrice, current.Total);
+        var request = new RentalRequest(current.FilmId, session.UserId, current.StartsOn, current.DueOn, current.DailyPrice, current.Total, session.SessionVersion);
         var result = await audit.AsActorAsync(session, () => rentals.RentAsync(request, cancellationToken)).ConfigureAwait(false);
 
         var role = AuditCodes.Of(session.Role);
@@ -111,14 +111,14 @@ internal sealed class RentalService(
     public Task<IReadOnlyList<RentalDetails>> GetMyActiveRentalsAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         Access.RequireSignedIn(session);
-        return audit.AsActorAsync(session, () => rentals.GetActiveAsync(new RentalActor(session.UserId, AsAdmin: false), FilmFilter.None, cancellationToken));
+        return audit.AsActorAsync(session, () => rentals.GetActiveAsync(new RentalActor(session.UserId, AsAdmin: false, session.SessionVersion), FilmFilter.None, cancellationToken));
     }
 
     public Task<IReadOnlyList<RentalDetails>> GetActiveRentalsAsync(UserSession session, FilmFilter filter, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
         ArgumentNullException.ThrowIfNull(filter);
-        return audit.AsActorAsync(session, () => rentals.GetActiveAsync(new RentalActor(session.UserId, AsAdmin: true), filter, cancellationToken));
+        return audit.AsActorAsync(session, () => rentals.GetActiveAsync(new RentalActor(session.UserId, AsAdmin: true, session.SessionVersion), filter, cancellationToken));
     }
 
     public async Task<ReturnPreview> PreviewReturnAsync(RentalDetails rental, CancellationToken cancellationToken = default)

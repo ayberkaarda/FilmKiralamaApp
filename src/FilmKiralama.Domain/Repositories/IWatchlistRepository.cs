@@ -6,23 +6,23 @@ namespace FilmKiralama.Domain.Repositories;
 public interface IWatchlistRepository
 {
     /// <summary>
-    /// Adds a listed film to the list of <paramref name="userId"/> under the account's watchlist lock,
+    /// Adds a listed film to the list of <paramref name="actor"/> under the account's watchlist lock,
     /// unless it is there already or the list holds <paramref name="maxEntries"/> films. Two adds of the
     /// same film at once leave one entry. The account is checked in the same transaction.
     /// </summary>
-    /// <exception cref="ActorRevokedException">The account no longer exists.</exception>
-    Task<WatchlistAddOutcome> AddAsync(int userId, int filmId, DateTime now, int maxEntries, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">The account no longer exists or its session was revoked.</exception>
+    Task<WatchlistAddOutcome> AddAsync(Actor actor, int filmId, DateTime now, int maxEntries, CancellationToken cancellationToken = default);
 
-    /// <summary>Removes entry <paramref name="entryId"/> when it belongs to <paramref name="userId"/>.</summary>
-    /// <exception cref="ActorRevokedException">The account no longer exists.</exception>
-    Task<bool> RemoveAsync(int userId, int entryId, CancellationToken cancellationToken = default);
+    /// <summary>Removes entry <paramref name="entryId"/> when it belongs to <paramref name="actor"/>.</summary>
+    /// <exception cref="ActorRevokedException">The account no longer exists or its session was revoked.</exception>
+    Task<bool> RemoveAsync(Actor actor, int entryId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The account's list, newest first, with the films as they are now. A film unlisted since keeps
     /// only its id and title (no other details, no ratings), so it can still be removed.
     /// </summary>
-    /// <exception cref="ActorRevokedException">The account no longer exists.</exception>
-    Task<IReadOnlyList<WatchlistItem>> GetAsync(int userId, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">The account no longer exists or its session was revoked.</exception>
+    Task<IReadOnlyList<WatchlistItem>> GetAsync(Actor actor, CancellationToken cancellationToken = default);
 }
 
 public enum WatchlistAddOutcome

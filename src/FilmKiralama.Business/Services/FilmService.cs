@@ -86,7 +86,7 @@ internal sealed class FilmService(
     {
         Access.RequireSignedIn(session);
         var checkedQuery = Checked(query);
-        var page = await audit.AsActorAsync(session, () => films.SearchAsync(checkedQuery, session.UserId, asAdmin: false, cancellationToken)).ConfigureAwait(false);
+        var page = await audit.AsActorAsync(session, () => films.SearchAsync(checkedQuery, session.Actor, asAdmin: false, cancellationToken)).ConfigureAwait(false);
         return Items(page);
     }
 
@@ -94,7 +94,7 @@ internal sealed class FilmService(
     {
         Access.RequireAdmin(session, audit);
         var checkedQuery = Checked(query);
-        var page = await audit.AsActorAsync(session, () => films.SearchAsync(checkedQuery, session.UserId, asAdmin: true, cancellationToken)).ConfigureAwait(false);
+        var page = await audit.AsActorAsync(session, () => films.SearchAsync(checkedQuery, session.Actor, asAdmin: true, cancellationToken)).ConfigureAwait(false);
         return Items(page);
     }
 
@@ -119,14 +119,14 @@ internal sealed class FilmService(
     public Task<IReadOnlyList<Film>> GetAllAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
-        return audit.AsActorAsync(session, () => films.GetAllAsync(session.UserId, cancellationToken));
+        return audit.AsActorAsync(session, () => films.GetAllAsync(session.Actor, cancellationToken));
     }
 
     public async Task<int> AddAsync(UserSession session, FilmInput input, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
         var film = Validate(input, change: false);
-        var id = await audit.AsActorAsync(session, () => films.AddAsync(session.UserId, film, cancellationToken)).ConfigureAwait(false);
+        var id = await audit.AsActorAsync(session, () => films.AddAsync(session.Actor, film, cancellationToken)).ConfigureAwait(false);
         audit.Record(AuditEvent.FilmChanged, AuditRole.Admin);
         return id;
     }
@@ -136,7 +136,7 @@ internal sealed class FilmService(
         Access.RequireAdmin(session, audit);
         var film = Validate(input, change: true);
         film.Id = filmId;
-        var outcome = await audit.AsActorAsync(session, () => films.UpdateAsync(session.UserId, film, cancellationToken)).ConfigureAwait(false);
+        var outcome = await audit.AsActorAsync(session, () => films.UpdateAsync(session.Actor, film, cancellationToken)).ConfigureAwait(false);
         switch (outcome)
         {
             case FilmUpdateOutcome.Updated:
@@ -152,7 +152,7 @@ internal sealed class FilmService(
     public async Task DeleteAsync(UserSession session, int filmId, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
-        var outcome = await audit.AsActorAsync(session, () => films.DeleteAsync(session.UserId, filmId, cancellationToken)).ConfigureAwait(false);
+        var outcome = await audit.AsActorAsync(session, () => films.DeleteAsync(session.Actor, filmId, cancellationToken)).ConfigureAwait(false);
         switch (outcome)
         {
             case FilmDeleteOutcome.Deleted:
