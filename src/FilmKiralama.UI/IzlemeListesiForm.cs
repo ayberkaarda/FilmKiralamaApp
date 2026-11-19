@@ -155,7 +155,10 @@ namespace FilmKiralama.UI
             _remove.Enabled = selected is not null;
         }
 
-        /// <summary>A row of the list; film texts are plain text in cells.</summary>
+        /// <summary>
+        /// A row of the list; film texts are plain text in cells. A film unlisted since it was added shows
+        /// its title and "Kaldırıldı" only.
+        /// </summary>
         private sealed class EntryRow(WatchlistView entry)
         {
             [Browsable(false)]
@@ -165,22 +168,24 @@ namespace FilmKiralama.UI
             public string Title => Entry.Item.Film.Title;
 
             [DisplayName("Tür")]
-            public string Genre => Entry.Item.Film.Genre;
+            public string Genre => Listed ? Entry.Item.Film.Genre : string.Empty;
 
             [DisplayName("Yıl")]
-            public int Year => Entry.Item.Film.Year;
+            public string Year => Listed ? Entry.Item.Film.Year.ToString(CultureInfo.InvariantCulture) : string.Empty;
 
             [DisplayName("Puan")]
-            public string Rating => ReviewDisplay.Summary(Entry.Item.AverageRating, Entry.Item.RatingCount);
+            public string Rating => Listed ? ReviewDisplay.Summary(Entry.Item.AverageRating, Entry.Item.RatingCount) : string.Empty;
 
             [DisplayName("Günlük Ücret")]
-            public string Price => DisplayFormat.Money(Entry.Item.Film.DailyPrice);
+            public string Price => Listed ? DisplayFormat.Money(Entry.Item.Film.DailyPrice) : string.Empty;
 
             [DisplayName("Durum")]
-            public string State => FilmRow.Describe(Entry.Item.Film);
+            public string State => Listed ? FilmRow.Describe(Entry.Item.Film) : "Kaldırıldı";
 
             [DisplayName("Eklenme")]
             public string Added => DisplayFormat.Date(Entry.AddedOn);
+
+            private bool Listed => Entry.Item.Film.IsListed;
         }
     }
 }

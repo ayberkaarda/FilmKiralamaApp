@@ -1,3 +1,5 @@
+using FilmKiralama.Business.Services;
+using FilmKiralama.Domain.Entities;
 using FilmKiralama.UI.Tests.Support;
 using static FilmKiralama.UI.Tests.Support.StaThread;
 
@@ -79,6 +81,29 @@ public sealed class WatchlistUiTests
         Assert.True(first.Result);
         Assert.Single(grid.Rows.Cast<DataGridViewRow>());
         Assert.Empty(grid.SelectedRows);
+    });
+
+    /// <summary>A film unlisted since it was added shows its title and "Kaldırıldı" only, and can be removed.</summary>
+    [Fact]
+    public void List_UnlistedFilm_ShowsItsTitleOnly() => Run(() =>
+    {
+        var watchlist = new ControlledWatchlistService();
+        watchlist.Entries.Clear();
+        watchlist.Entries.Add(new(7, new CatalogItem(new Film { Id = 9, Title = "Eski Film", IsListed = false }, null, 0), new DateOnly(2026, 3, 1)));
+        using var form = new IzlemeListesiForm(watchlist, new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
+        var grid = Find<DataGridView>(form, "dgvListe");
+        _ = grid.Handle;
+
+        Assert.True(form.LoadAsync().IsCompletedSuccessfully);
+
+        var cells = grid.Rows[0].Cells.Cast<DataGridViewCell>().ToDictionary(c => c.OwningColumn!.HeaderText, c => c.FormattedValue?.ToString() ?? string.Empty);
+        Assert.Equal("Eski Film", cells["Film"]);
+        Assert.Equal("Kaldırıldı", cells["Durum"]);
+        Assert.Equal([string.Empty, string.Empty, string.Empty, string.Empty], [cells["Tür"], cells["Yıl"], cells["Puan"], cells["Günlük Ücret"]]);
+        grid.CurrentCell = grid.Rows[0].Cells[0];
+        grid.Rows[0].Selected = true;
+        Assert.False(Find<Button>(form, "btnKirala").Enabled);
+        Assert.True(Find<Button>(form, "btnCikar").Enabled);
     });
 
     [Fact]

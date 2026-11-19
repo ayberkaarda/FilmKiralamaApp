@@ -93,6 +93,30 @@ public sealed class SqliteWatchlistTests : IAsyncLifetime
         Assert.Equal(error.Message, missing.Message);
     }
 
+    /// <summary>
+    /// A film the admin unlisted after it was added stays on the list by its title only, so it can be
+    /// removed, but none of its details (price, director, copies, ratings) are shown any more.
+    /// </summary>
+    [Fact]
+    public async Task UnlistedFilmOnTheList_ShowsItsTitleOnly()
+    {
+        var customer = User(SeedUserId);
+        var film = await AddFilmAsync(_db.Services, "Kaldirilan", 2, dailyPrice: "12,5");
+        await Watchlist.AddAsync(customer, film, Ct);
+        await _db.Get<IFilmService>().UpdateAsync(Admin(SeedAdminId), film, new FilmInput("Kaldirilan", "Dram", "2020", "Ece Deneme", "12,5", null, "Deneme filmi.", 2, false), Ct);
+
+        var entry = Assert.Single(await Watchlist.GetMineAsync(customer, Ct));
+
+        Assert.Equal((film, "Kaldirilan", false), (entry.Item.Film.Id, entry.Item.Film.Title, entry.Item.Film.IsListed));
+        Assert.Equal((0m, string.Empty, string.Empty, 0, 0, 0), (entry.Item.Film.DailyPrice, entry.Item.Film.Director, entry.Item.Film.Genre, entry.Item.Film.Year, entry.Item.Film.TotalCopies, entry.Item.Film.AvailableCopies));
+        Assert.Null(entry.Item.Film.ImageUrl);
+        Assert.Equal(0, entry.Item.RatingCount);
+        Assert.False(entry.Item.IsAvailable);
+
+        await Watchlist.RemoveAsync(customer, entry.EntryId, Ct);
+        Assert.Empty(await Watchlist.GetMineAsync(customer, Ct));
+    }
+
     /// <summary>The hundredth film fits, the one after it does not.</summary>
     [Fact]
     public async Task Add_BeyondTheLimit_IsRefused()

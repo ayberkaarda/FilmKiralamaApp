@@ -87,6 +87,13 @@ internal sealed class WatchlistRepository(IDbContextFactory<FilmDbContext> conte
                 })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
-        return [.. rows.Select(r => new WatchlistItem(r.Id, r.Film, new RatingTotals(r.Count, r.Sum), r.AddedAt))];
+        // A film the admin has unlisted since is missing for customers everywhere else; the entry keeps
+        // only its title, so it can still be recognized and removed.
+        return
+        [
+            .. rows.Select(r => r.Film.IsListed
+                ? new WatchlistItem(r.Id, r.Film, new RatingTotals(r.Count, r.Sum), r.AddedAt)
+                : new WatchlistItem(r.Id, new Film { Id = r.Film.Id, Title = r.Film.Title, IsListed = false }, RatingTotals.None, r.AddedAt)),
+        ];
     }
 }

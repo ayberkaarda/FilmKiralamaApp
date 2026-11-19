@@ -17,7 +17,10 @@ public interface IWatchlistRepository
     /// <exception cref="ActorRevokedException">The account no longer exists.</exception>
     Task<bool> RemoveAsync(int userId, int entryId, CancellationToken cancellationToken = default);
 
-    /// <summary>The account's list, newest first, with the films as they are now (unlisted ones included).</summary>
+    /// <summary>
+    /// The account's list, newest first, with the films as they are now. A film unlisted since keeps
+    /// only its id and title (no other details, no ratings), so it can still be removed.
+    /// </summary>
     /// <exception cref="ActorRevokedException">The account no longer exists.</exception>
     Task<IReadOnlyList<WatchlistItem>> GetAsync(int userId, CancellationToken cancellationToken = default);
 }
