@@ -158,5 +158,5 @@ public sealed class FilmServiceTests
         Assert.Same(hidden, await Service().GetAsync(Sessions.Admin, 3, Ct));
     }
 
-    private FilmService Service() => new(_films.Object, _time, _audit);
+    private FilmService Service() => new(_films.Object, _time, _audit, TestValidators.Film);
 }

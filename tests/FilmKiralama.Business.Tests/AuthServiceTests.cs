@@ -241,7 +241,8 @@ public sealed class AuthServiceTests
         _users.VerifyNoOtherCalls();
     }
 
-    private AuthService Service() => new(_users.Object, _hasher, _time, _audit);
+    private AuthService Service() =>
+        new(_users.Object, _hasher, _time, _audit, TestValidators.SignIn, TestValidators.SignUp, TestValidators.PasswordChange);
 
     private void Setup(AccountCredentials account) =>
         _users.Setup(u => u.FindByUserNameAsync(UserName, It.IsAny<CancellationToken>())).ReturnsAsync(account);

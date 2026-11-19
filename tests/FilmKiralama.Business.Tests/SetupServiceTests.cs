@@ -66,5 +66,6 @@ public sealed class SetupServiceTests
         new PasswordHasher(iterations: 1_000),
         new SetupKeyGate(new FakeTimeProvider(), new SetupKeyThrottle(TimeSpan.Zero)),
         new SetupKeyEnvironment(null),
-        _audit);
+        _audit,
+        TestValidators.FirstAdmin);
 }

@@ -5,7 +5,10 @@ using FilmKiralama.Domain.Repositories;
 
 namespace FilmKiralama.Business.Validation;
 
-/// <summary>Checks and fixed messages for account values, shared by sign-up, setup and the admin's account form.</summary>
+/// <summary>
+/// Fixed messages for account values, shared by sign-up, setup and the admin's account form; the
+/// validators in <c>Validators.cs</c> apply the rules.
+/// </summary>
 internal static class AccountRules
 {
     internal const string AllFieldsRequired = "Lütfen tüm alanları doldurun.";
@@ -33,41 +36,6 @@ internal static class AccountRules
 
     /// <summary>Whether <paramref name="name"/> is the name the sign-up form keeps for the shop's own admin.</summary>
     public static bool IsReserved(string? name) => string.Equals(name, ReservedUserName, StringComparison.OrdinalIgnoreCase);
-
-    public static void RequireValidUserName(string name, bool allowReserved = false)
-    {
-        if (!InputRules.IsValidUserName(name))
-        {
-            throw new BusinessRuleException(UserNameInvalid);
-        }
-
-        if (!allowReserved && IsReserved(name))
-        {
-            throw new BusinessRuleException(UserNameReserved);
-        }
-    }
-
-    public static void RequireValidPassword(string password)
-    {
-        if (password.Length < PasswordPolicy.MinLength || password.Length > PasswordPolicy.MaxLength)
-        {
-            throw new BusinessRuleException(PasswordInvalid);
-        }
-    }
-
-    public static string RequireValidEmail(string? email)
-    {
-        var value = email?.Trim();
-        if (!InputRules.IsValidEmail(value))
-        {
-            throw new BusinessRuleException(EmailInvalid);
-        }
-
-        return value!;
-    }
-
-    public static string RequireValidPhone(string? phone) =>
-        InputRules.NormalizePhone(phone) ?? throw new BusinessRuleException(PhoneInvalid);
 
     /// <summary>The message the original sign-up form showed for values other accounts already use.</summary>
     public static string DescribeTaken(AccountFields taken)

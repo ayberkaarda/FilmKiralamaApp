@@ -3,6 +3,7 @@ using FilmKiralama.Business.Security;
 using FilmKiralama.Business.Validation;
 using FilmKiralama.Domain.Entities;
 using FilmKiralama.Domain.Repositories;
+using FluentValidation;
 
 namespace FilmKiralama.Business.Services;
 
@@ -27,7 +28,12 @@ public interface IAccountService
     Task DeleteAsync(UserSession session, int userId, CancellationToken cancellationToken = default);
 }
 
-internal sealed class AccountService(IUserRepository users, IPasswordHasher passwordHasher, IAuditLog audit) : IAccountService
+internal sealed class AccountService(
+    IUserRepository users,
+    IPasswordHasher passwordHasher,
+    IAuditLog audit,
+    IValidator<NewAccountInput> newAccountValidator,
+    IValidator<AccountChangeInput> accountChangeValidator) : IAccountService
 {
     internal const string NotFound = "Kullanıcı bulunamadı.";
     internal const string LastAdmin = "Sistemde en az bir yönetici kalmalıdır; son yöneticinin rolü değiştirilemez.";
@@ -43,14 +49,11 @@ internal sealed class AccountService(IUserRepository users, IPasswordHasher pass
     public async Task<int> AddAsync(UserSession session, AccountInput input, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
-        ArgumentNullException.ThrowIfNull(input);
-        if (string.IsNullOrWhiteSpace(input.Password))
-        {
-            throw new BusinessRuleException(AccountRules.AllFieldsRequired);
-        }
 
-        var (name, email, phone) = Validate(input);
-        AccountRules.RequireValidPassword(input.Password);
+        // Admins may give any name the rules allow, also the one the sign-up form keeps.
+        var account = NewAccountInput.Create(input);
+        newAccountValidator.ValidateOrThrow(account);
+        var (name, email, phone) = (account.UserName, account.Email, InputRules.NormalizePhone(account.Phone)!);
         await RequireFreeAsync(name, email, phone, null, cancellationToken).ConfigureAwait(false);
 
         try
@@ -58,7 +61,7 @@ internal sealed class AccountService(IUserRepository users, IPasswordHasher pass
             var user = new User
             {
                 UserName = name,
-                PasswordHash = passwordHasher.Hash(input.Password),
+                PasswordHash = passwordHasher.Hash(account.Password!),
                 PasswordFormat = PasswordFormat.Pbkdf2,
                 Role = input.Role,
                 Email = email,
@@ -79,13 +82,10 @@ internal sealed class AccountService(IUserRepository users, IPasswordHasher pass
         Access.RequireAdmin(session, audit);
         ArgumentNullException.ThrowIfNull(input);
 
-        var (name, email, phone) = await ValidateChangeAsync(userId, input, cancellationToken).ConfigureAwait(false);
-        string? newHash = null;
-        if (!string.IsNullOrEmpty(input.Password))
-        {
-            AccountRules.RequireValidPassword(input.Password);
-            newHash = passwordHasher.Hash(input.Password);
-        }
+        var change = AccountChangeInput.Create(input, await KeepsStoredNameAsync(userId, input, cancellationToken).ConfigureAwait(false));
+        accountChangeValidator.ValidateOrThrow(change);
+        var (name, email, phone) = (change.UserName, change.Email, change.Phone is null ? null : InputRules.NormalizePhone(change.Phone));
+        var newHash = string.IsNullOrEmpty(change.Password) ? null : passwordHasher.Hash(change.Password);
 
         await RequireFreeAsync(name, email, phone, userId, cancellationToken).ConfigureAwait(false);
 
@@ -130,49 +130,24 @@ internal sealed class AccountService(IUserRepository users, IPasswordHasher pass
         }
     }
 
-    private static (string Name, string Email, string Phone) Validate(AccountInput input)
-    {
-        var name = input.UserName?.Trim();
-        if (string.IsNullOrEmpty(name) || string.IsNullOrWhiteSpace(input.Email) || string.IsNullOrWhiteSpace(input.Phone)
-            || !Enum.IsDefined(input.Role))
-        {
-            throw new BusinessRuleException(AccountRules.AllFieldsRequired);
-        }
-
-        // Admins may give any name the rules allow, also the one the sign-up form keeps.
-        AccountRules.RequireValidUserName(name, allowReserved: true);
-        return (name, AccountRules.RequireValidEmail(input.Email), AccountRules.RequireValidPhone(input.Phone));
-    }
-
     /// <summary>
-    /// Checks a change of an account. Unlike a new account, e-mail and phone may stay empty (they are
-    /// stored as NULL, as the upgrade keeps them for accounts of the original application) and are only
-    /// checked when given. A name today's rules do not allow is kept when it is the account's stored
-    /// name and fits its column, so an original account can be changed without being renamed.
+    /// Whether the changed account keeps a name today's rules do not allow because it is its stored name
+    /// and fits its column, so an original account can be changed without being renamed. The account is
+    /// read only for such a name. Unlike a new account, e-mail and phone may stay empty on a change (they
+    /// are stored as NULL, as the upgrade keeps them for accounts of the original application).
     /// </summary>
-    private async Task<(string Name, string? Email, string? Phone)> ValidateChangeAsync(int userId, AccountInput input, CancellationToken cancellationToken)
+    private async Task<bool> KeepsStoredNameAsync(int userId, AccountInput input, CancellationToken cancellationToken)
     {
         var name = input.UserName?.Trim();
-        if (string.IsNullOrEmpty(name) || !Enum.IsDefined(input.Role))
+        if (string.IsNullOrEmpty(name) || !Enum.IsDefined(input.Role) || InputRules.IsValidUserName(name))
         {
-            throw new BusinessRuleException(AccountRules.AllFieldsRequired);
+            return false;
         }
 
-        if (!InputRules.IsValidUserName(name))
-        {
-            var stored = await users.FindByIdAsync(userId, cancellationToken).ConfigureAwait(false);
-            var unchanged = stored is not null
-                && string.Equals(stored.UserName, name, StringComparison.Ordinal)
-                && name.Length <= InputRules.StoredUserNameMaxLength;
-            if (!unchanged)
-            {
-                AccountRules.RequireValidUserName(name, allowReserved: true);
-            }
-        }
-
-        var email = string.IsNullOrWhiteSpace(input.Email) ? null : AccountRules.RequireValidEmail(input.Email);
-        var phone = string.IsNullOrWhiteSpace(input.Phone) ? null : AccountRules.RequireValidPhone(input.Phone);
-        return (name, email, phone);
+        var stored = await users.FindByIdAsync(userId, cancellationToken).ConfigureAwait(false);
+        return stored is not null
+            && string.Equals(stored.UserName, name, StringComparison.Ordinal)
+            && name.Length <= InputRules.StoredUserNameMaxLength;
     }
 
     private async Task RequireFreeAsync(string name, string? email, string? phone, int? exceptUserId, CancellationToken cancellationToken)
