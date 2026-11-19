@@ -91,12 +91,15 @@ public sealed class SetupAuthorityTests
                  + HAS_PERMS_BY_NAME(N'dbo.Kullanicilar', N'OBJECT', N'UPDATE')
                  + HAS_PERMS_BY_NAME(N'dbo.KurulumAnahtarlari', N'OBJECT', N'SELECT')
                  + HAS_PERMS_BY_NAME(N'dbo.KurulumAnahtarlari', N'OBJECT', N'UPDATE', N'Tuketildi', N'COLUMN')
+                 + HAS_PERMS_BY_NAME(N'dbo.Degerlendirmeler', N'OBJECT', N'INSERT')
+                 + HAS_PERMS_BY_NAME(N'dbo.Degerlendirmeler', N'OBJECT', N'UPDATE')
+                 + HAS_PERMS_BY_NAME(N'dbo.Degerlendirmeler', N'OBJECT', N'DELETE')
                  + 10 * HAS_PERMS_BY_NAME(N'dbo.Kiralama', N'OBJECT', N'DELETE')
                  + 10 * HAS_PERMS_BY_NAME(N'dbo.KurulumAnahtarlari', N'OBJECT', N'INSERT')
                  + 10 * HAS_PERMS_BY_NAME(N'dbo.KurulumAnahtarlari', N'OBJECT', N'UPDATE', N'SonKullanma', N'COLUMN');
             REVERT;
             """;
-        Assert.Equal(6, await database.ScalarAsync(Rights, Ct));
+        Assert.Equal(9, await database.ScalarAsync(Rights, Ct));
     }
 
     private static async Task<Exception?> Try(Func<Task> operation)

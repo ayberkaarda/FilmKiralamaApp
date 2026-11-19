@@ -233,6 +233,36 @@ public sealed class SqlServerConcurrencyTests
         await AssertStockAsync(database, ThreeCopiesFilmId, active: 1, available: 2);
     }
 
+    /// <summary>
+    /// The first review of a customer saved twice at the same moment from two instances: both saves
+    /// succeed and one review remains, carrying one of the two ratings.
+    /// </summary>
+    [Fact]
+    public async Task Review_SavedTwiceAtOnce_LeavesOneReview()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices(demo: true);
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        await using var b = database.BuildServices();
+        var customer = await RegisterAsync(a, "yorumcu", 1);
+
+        for (var round = 0; round < Rounds; round++)
+        {
+            var filmId = await AddFilmAsync(a, "Yorum " + round, copies: 1);
+            var rental = await RentAsync(a, customer, filmId);
+            await a.GetRequiredService<IRentalService>().ReturnAsync(customer, rental.RentalId, Ct);
+
+            var results = await RaceAsync(
+            [
+                () => a.GetRequiredService<FilmKiralama.Business.Reviews.IReviewService>().SaveAsync(customer, filmId, new FilmKiralama.Business.Reviews.ReviewInput(2, "a"), Ct),
+                () => b.GetRequiredService<FilmKiralama.Business.Reviews.IReviewService>().SaveAsync(customer, filmId, new FilmKiralama.Business.Reviews.ReviewInput(5, "b"), Ct),
+            ]);
+
+            Assert.All(results, Assert.Null);
+            Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Degerlendirmeler WHERE FilmID = @id AND Puan IN (2, 5)", Ct, ("@id", filmId)));
+        }
+    }
+
     private static AccountInput Input(string name, int number, UserRole role) =>
         new(name, Password, name + "@example.com", "553" + number.ToString("0000000", System.Globalization.CultureInfo.InvariantCulture), role);
 
