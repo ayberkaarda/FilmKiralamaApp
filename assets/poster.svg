@@ -1,18 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320" width="240" height="320">
-  <!-- Stand-in for a film without a poster: a muted film frame on a dark card. -->
-  <defs>
-    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3a3a50"/>
-      <stop offset="1" stop-color="#25253a"/>
-    </linearGradient>
-  </defs>
-  <rect width="240" height="320" fill="url(#card)"/>
-  <g transform="translate(60 110)" fill="none" stroke="#8a87a3" stroke-width="6" stroke-linejoin="round">
-    <rect x="0" y="0" width="120" height="100" rx="10"/>
-    <polygon points="50,32 50,68 80,50" fill="#8a87a3" stroke="none"/>
-  </g>
-  <g fill="#8a87a3">
-    <rect x="68" y="120" width="10" height="8" rx="2"/><rect x="68" y="146" width="10" height="8" rx="2"/><rect x="68" y="172" width="10" height="8" rx="2"/>
-    <rect x="162" y="120" width="10" height="8" rx="2"/><rect x="162" y="146" width="10" height="8" rx="2"/><rect x="162" y="172" width="10" height="8" rx="2"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 360" width="240" height="360">
+  <title>Afiş yok</title>
+  <desc>Stand-in for a film without a poster: a muted film frame with a play sign on a dark plum card, in the 2:3 shape of a poster.</desc>
+  <rect x="0" y="0" width="240" height="360" fill="#2B2335"/>
+  <rect x="0" y="252" width="240" height="108" fill="#251E2E"/>
+  <rect x="0" y="250" width="240" height="2" fill="#3A3046"/>
+  <rect x="68" y="122" width="104" height="88" rx="10" fill="none" stroke="#8D82A0" stroke-width="6"/>
+  <rect x="78" y="132" width="10" height="8" rx="2" fill="#8D82A0"/>
+  <rect x="78" y="150" width="10" height="8" rx="2" fill="#8D82A0"/>
+  <rect x="78" y="168" width="10" height="8" rx="2" fill="#8D82A0"/>
+  <rect x="78" y="186" width="10" height="8" rx="2" fill="#8D82A0"/>
+  <rect x="152" y="132" width="10" height="8" rx="2" fill="#8D82A0"/>
+  <rect x="152" y="150" width="10" height="8" rx="2" fill="#8D82A0"/>
+  <rect x="152" y="168" width="10" height="8" rx="2" fill="#8D82A0"/>
+  <rect x="152" y="186" width="10" height="8" rx="2" fill="#8D82A0"/>
+  <path d="M 109 148 L 109 184 L 136 166 Z" fill="#8D82A0"/>
 </svg>

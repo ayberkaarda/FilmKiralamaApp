@@ -43,7 +43,7 @@ internal static class DisplayFormat
 /// </summary>
 internal static class AppAssets
 {
-    private static readonly Lazy<Image> LazyLogo = new(() => LoadImage("logo.png"));
+    private static readonly Lazy<Image> LazyLogo = new(() => LoadImage("logo-256.png"));
     private static readonly Lazy<Image> LazyBackground = new(() => LoadImage("background.png"));
     private static readonly Lazy<Image> LazyHero = new(() => LoadImage("hero.png"));
     private static readonly Lazy<Image> LazyPoster = new(() => LoadImage("poster.png"));
