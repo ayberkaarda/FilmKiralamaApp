@@ -8,7 +8,8 @@ public sealed record ExportFile(string SuggestedName, byte[] Content);
 /// <summary>
 /// CSV for spreadsheets: UTF-8 with a byte order mark (so Excel reads Turkish letters), ";" between the
 /// fields (the Turkish list separator), every field quoted, and a leading "'" before any field a
-/// spreadsheet would run as a formula (one starting with =, +, -, @, a tab or a carriage return).
+/// spreadsheet would run as a formula (one starting with =, +, -, @, also after leading white space, or
+/// with a tab, a carriage return or a line feed).
 /// </summary>
 public static class ReportCsv
 {
@@ -32,7 +33,11 @@ public static class ReportCsv
     public static string Field(string? value)
     {
         var text = value ?? string.Empty;
-        if (text.Length > 0 && text[0] is '=' or '+' or '-' or '@' or '\t' or '\r')
+
+        // Some spreadsheets trim leading white space (spaces, line feeds) before they look for a formula.
+        var start = text.AsSpan().TrimStart();
+        if ((text.Length > 0 && text[0] is '\t' or '\r' or '\n')
+            || (start.Length > 0 && start[0] is '=' or '+' or '-' or '@'))
         {
             text = "'" + text;
         }
