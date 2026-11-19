@@ -45,7 +45,7 @@ internal sealed class PosterLoader : IDisposable
     private readonly Func<Uri, CancellationToken, Task<Image?>> _fetch;
     private readonly HttpClient? _client;
     private readonly ConditionalWeakTable<PictureBox, PosterState> _states = new();
-    private readonly SemaphoreSlim _downloads = new(MaxConcurrentDownloads, MaxConcurrentDownloads);
+    private readonly DownloadSlots _downloads = new(MaxConcurrentDownloads);
 
     /// <summary>A loader that connects only to addresses <paramref name="allowAddress"/> accepts.</summary>
     public PosterLoader(Func<IPAddress, bool> allowAddress)
@@ -96,11 +96,7 @@ internal sealed class PosterLoader : IDisposable
         _ = LoadAsync(pictureBox, state, request, uri, token);
     }
 
-    public void Dispose()
-    {
-        _client?.Dispose();
-        _downloads.Dispose();
-    }
+    public void Dispose() => _client?.Dispose();
 
     /// <summary>Empties <paramref name="pictureBox"/>; a download still running for it is dropped.</summary>
     public void Clear(PictureBox pictureBox)
@@ -298,7 +294,7 @@ internal sealed class PosterLoader : IDisposable
         {
             // At most MaxConcurrentDownloads downloads and decodes at a time; a request replaced while it
             // waits gives up its turn.
-            await _downloads.WaitAsync(token);
+            await _downloads.EnterAsync(token);
             entered = true;
             image = await _fetch(uri, token);
         }
@@ -312,7 +308,7 @@ internal sealed class PosterLoader : IDisposable
         {
             if (entered)
             {
-                ReleaseDownload();
+                _downloads.Leave();
             }
         }
 
@@ -331,15 +327,43 @@ internal sealed class PosterLoader : IDisposable
         SetImage(pictureBox, state, image, owned: true);
     }
 
-    private void ReleaseDownload()
+    /// <summary>
+    /// At most a given number of downloads at a time, the others waiting in order. Used on the UI thread
+    /// only, like the loader itself, so a freed slot is handed to the next waiting request at once, on
+    /// that thread.
+    /// </summary>
+    private sealed class DownloadSlots(int count)
     {
-        try
+        private readonly Queue<TaskCompletionSource> _waiting = new();
+        private int _taken;
+
+        /// <summary>Takes a slot, waiting for one when all are taken; a canceled wait takes none.</summary>
+        public Task EnterAsync(CancellationToken token)
         {
-            _downloads.Release();
+            if (_taken < count)
+            {
+                _taken++;
+                return Task.CompletedTask;
+            }
+
+            var turn = new TaskCompletionSource();
+            token.Register(() => turn.TrySetCanceled(token));
+            _waiting.Enqueue(turn);
+            return turn.Task;
         }
-        catch (ObjectDisposedException)
+
+        /// <summary>Hands the slot to the first request still waiting, or frees it.</summary>
+        public void Leave()
         {
-            // The loader was disposed while the download ran.
+            while (_waiting.TryDequeue(out var next))
+            {
+                if (next.TrySetResult())
+                {
+                    return;
+                }
+            }
+
+            _taken--;
         }
     }
 
