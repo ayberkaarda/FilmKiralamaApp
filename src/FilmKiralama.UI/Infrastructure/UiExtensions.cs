@@ -119,26 +119,13 @@ internal static class UiExtensions
     }
 
     /// <summary>
-    /// Shows a film's poster: an http or https address is loaded in the background, anything else (or a
-    /// failed load) shows the application's own placeholder. Local paths and network shares are never
+    /// Shows a film's poster: an http or https address on a public host is downloaded in the background
+    /// by <see cref="PosterLoader"/>, anything else (or a refused or failed download) shows the
+    /// application's own placeholder. Local paths, network shares and local network addresses are never
     /// opened, as the address comes from the database.
     /// </summary>
-    public static void ShowPoster(this PictureBox pictureBox, string? imageUrl)
-    {
-        ArgumentNullException.ThrowIfNull(pictureBox);
-
-        pictureBox.ErrorImage = AppAssets.Poster;
-        pictureBox.InitialImage = AppAssets.Poster;
-        if (InputRules.IsValidImageUrl(imageUrl))
-        {
-            pictureBox.LoadAsync(imageUrl);
-        }
-        else
-        {
-            pictureBox.CancelAsync();
-            pictureBox.Image = AppAssets.Poster;
-        }
-    }
+    public static void ShowPoster(this PictureBox pictureBox, string? imageUrl) =>
+        PosterLoader.Default.Show(pictureBox, imageUrl);
 
     /// <summary>
     /// Read-only list settings of the original grids. Under high contrast the system colors stay, so a

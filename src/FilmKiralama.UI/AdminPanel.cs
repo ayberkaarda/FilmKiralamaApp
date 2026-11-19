@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using FilmKiralama.Business;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Business.Validation;
@@ -60,6 +60,13 @@ namespace FilmKiralama.UI
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         internal IUserPrompts Prompts { get; set; }
 
+        /// <summary>
+        /// Shows the selected film's poster; only the poster of the latest selection is shown. Replaced in
+        /// tests so no download starts.
+        /// </summary>
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        internal PosterLoader Posters { get; set; } = PosterLoader.Default;
+
         /// <summary>The film whose details are in the form, or <see langword="null"/> when a new one is entered.</summary>
         internal int? SelectedFilmId { get; private set; }
 
@@ -108,7 +115,7 @@ namespace FilmKiralama.UI
             chkKiralamayaAcik.Checked = film.IsListed;
             txtLink.Text = film.ImageUrl ?? string.Empty;
             txtHakkinda.Text = film.About ?? string.Empty;
-            pictureBox1.ShowPoster(film.ImageUrl);
+            Posters.Show(pictureBox1, film.ImageUrl);
             btnGuncelle.Enabled = true;
         }
 
@@ -257,8 +264,7 @@ namespace FilmKiralama.UI
             chkKiralamayaAcik.Checked = true;
             txtLink.Clear();
             txtHakkinda.Clear();
-            pictureBox1.CancelAsync();
-            pictureBox1.Image = null;
+            Posters.Clear(pictureBox1);
             btnGuncelle.Enabled = false;
         }
 
