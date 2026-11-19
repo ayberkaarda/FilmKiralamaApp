@@ -82,7 +82,7 @@ public sealed class SqliteWatchlistTests : IAsyncLifetime
         await Watchlist.AddAsync(customer, SingleCopyFilmId, Ct);
         await RentAsync(_db.Services, other, SingleCopyFilmId);
         var hidden = await AddFilmAsync(_db.Services, "Gizli", 1);
-        await _db.Get<IFilmService>().UpdateAsync(Admin(SeedAdminId), hidden, new FilmInput("Gizli", "Dram", "2020", "Ece Deneme", "10", null, "Deneme filmi.", 1, false), Ct);
+        await _db.Get<IFilmService>().UpdateLoadedAsync(Admin(SeedAdminId), hidden, new FilmInput("Gizli", "Dram", "2020", "Ece Deneme", "10", null, "Deneme filmi.", 1, false), Ct);
 
         var entry = Assert.Single(await Watchlist.GetMineAsync(customer, Ct));
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Watchlist.AddAsync(customer, hidden, Ct));
@@ -103,7 +103,7 @@ public sealed class SqliteWatchlistTests : IAsyncLifetime
         var customer = User(SeedUserId);
         var film = await AddFilmAsync(_db.Services, "Kaldirilan", 2, dailyPrice: "12,5");
         await Watchlist.AddAsync(customer, film, Ct);
-        await _db.Get<IFilmService>().UpdateAsync(Admin(SeedAdminId), film, new FilmInput("Kaldirilan", "Dram", "2020", "Ece Deneme", "12,5", null, "Deneme filmi.", 2, false), Ct);
+        await _db.Get<IFilmService>().UpdateLoadedAsync(Admin(SeedAdminId), film, new FilmInput("Kaldirilan", "Dram", "2020", "Ece Deneme", "12,5", null, "Deneme filmi.", 2, false), Ct);
 
         var entry = Assert.Single(await Watchlist.GetMineAsync(customer, Ct));
 

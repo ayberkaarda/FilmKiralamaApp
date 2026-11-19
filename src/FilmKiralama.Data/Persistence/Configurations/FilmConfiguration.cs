@@ -12,6 +12,7 @@ internal sealed class FilmConfiguration : IEntityTypeConfiguration<Film>
         {
             table.HasCheckConstraint("CK_Filmler_GunlukUcret", SchemaLimits.DailyPriceCheck);
             table.HasCheckConstraint("CK_Filmler_Adet", SchemaLimits.CopiesCheck);
+            table.HasCheckConstraint("CK_Filmler_Surum", SchemaLimits.FilmVersionCheck);
         });
 
         builder.HasKey(f => f.Id).HasName("PK_Filmler");
@@ -26,6 +27,7 @@ internal sealed class FilmConfiguration : IEntityTypeConfiguration<Film>
         builder.Property(f => f.TotalCopies).HasColumnName("Adet");
         builder.Property(f => f.AvailableCopies).HasColumnName("MevcutAdet");
         builder.Property(f => f.IsListed).HasColumnName("KiralamayaAcik");
+        builder.Property(f => f.Version).HasColumnName("Surum").HasDefaultValue(1);
 
         builder.HasIndex(f => f.Genre, "IX_Filmler_Tur");
         builder.HasIndex(f => f.Director, "IX_Filmler_Yonetmen");

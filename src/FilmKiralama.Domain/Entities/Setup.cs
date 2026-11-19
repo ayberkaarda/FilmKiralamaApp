@@ -30,7 +30,10 @@ public sealed class SetupKey
     public DateTime? ConsumedAt { get; set; }
 }
 
-/// <summary>What a sign-in needs to know about an account.</summary>
+/// <summary>
+/// What a sign-in needs to know about an account; <see cref="SessionVersion"/> is the version a session
+/// issued from it carries.
+/// </summary>
 public sealed record AccountCredentials(
     int Id,
     string UserName,
@@ -38,10 +41,39 @@ public sealed record AccountCredentials(
     string PasswordHash,
     PasswordFormat PasswordFormat,
     int FailedLoginCount,
-    DateTime? LockoutEnd);
+    DateTime? LockoutEnd,
+    int SessionVersion);
+
+/// <summary>
+/// A refused sign-in (or a wrong current password) to count against account <see cref="UserName"/>: the
+/// password value, its format and the session version are the ones the refused attempt was checked
+/// against. The failure is counted only while the stored account still has all three, so an attempt
+/// checked against a password that has been replaced since counts nothing.
+/// </summary>
+public sealed record FailedSignIn(string UserName, string PasswordHash, PasswordFormat PasswordFormat, int SessionVersion)
+{
+    /// <summary>A failure checked against <paramref name="account"/> as it was read.</summary>
+    public static FailedSignIn For(AccountCredentials account)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        return new(account.UserName, account.PasswordHash, account.PasswordFormat, account.SessionVersion);
+    }
+
+    /// <summary>
+    /// A failure for a name no account had when it was looked up. It is written like any other failure,
+    /// so the refusal makes the same round trips, but it can match no row: no stored session version is
+    /// negative (a CHECK constraint), so also an account registered under the name meanwhile is untouched.
+    /// </summary>
+    public static FailedSignIn ForUnknown(string userName) => new(userName, string.Empty, PasswordFormat.Pbkdf2, SessionVersion: -1);
+}
 
 /// <summary>A usable setup key, as a given key is compared with it.</summary>
 public sealed record StoredSetupKey(int Id, byte[] KeyHash);
 
-/// <summary>An account as the admin's account list shows it; the password never leaves the database.</summary>
-public sealed record UserSummary(int Id, string UserName, string? Email, string? Phone, UserRole Role);
+/// <summary>
+/// An account as the admin's account list shows it; the password never leaves the database.
+/// <see cref="Version"/> is the account's session version when it was read: a change made from a form
+/// that loaded it carries it back, and is refused once another admin has changed the account's role or
+/// password since.
+/// </summary>
+public sealed record UserSummary(int Id, string UserName, string? Email, string? Phone, UserRole Role, int Version);

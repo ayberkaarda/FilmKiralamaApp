@@ -1,4 +1,5 @@
 using FilmKiralama.Business;
+using FilmKiralama.Business.Security;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Data.Persistence;
 using FilmKiralama.Domain.Entities;
@@ -132,6 +133,78 @@ public sealed class SqlServerConcurrencyTests
         Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE KullaniciAdi = N'kilit' AND KilitBitis IS NOT NULL AND BasarisizGiris = 0", Ct));
     }
 
+    /// <summary>
+    /// Two wrong passwords for an account with four failures, both read while it was unlocked and held
+    /// between the password check and the write. The first one locks the account; the second one arrives
+    /// while the lock (by the database's clock) is in force and counts nothing: the counter stays at zero
+    /// and the lock is neither extended nor shortened.
+    /// </summary>
+    [Fact]
+    public async Task SignIn_FailureInFlightWhenTheAccountLocks_CountsNothing()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        var hasher = new GatedHasher();
+        await using var a = database.BuildServices(services => services.AddSingleton<IPasswordHasher>(hasher), demo: true);
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        await RegisterAsync(a, "ucustaki", 1);
+        var auth = a.GetRequiredService<IAuthService>();
+        for (var i = 0; i < LoginPolicy.MaxFailedAttempts - 1; i++)
+        {
+            await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInAsync("ucustaki", "Yanlis.Sifre1", Ct));
+        }
+
+        var first = hasher.Gate();
+        var second = hasher.Gate();
+        var locking = Task.Run(() => auth.SignInAsync("ucustaki", "Yanlis.Sifre1", Ct), Ct);
+        await first.Entered.WaitAsync(Ct);
+        var late = Task.Run(() => auth.SignInAsync("ucustaki", "Yanlis.Sifre1", Ct), Ct);
+        await second.Entered.WaitAsync(Ct);
+
+        first.Release.SetResult();
+        await Assert.ThrowsAsync<BusinessRuleException>(() => locking);
+        var lockEnd = await database.TextAsync("SELECT CONVERT(nvarchar(40), KilitBitis, 126) FROM dbo.Kullanicilar WHERE KullaniciAdi = N'ucustaki'", Ct);
+        Assert.NotNull(lockEnd);
+
+        second.Release.SetResult();
+        await Assert.ThrowsAsync<BusinessRuleException>(() => late);
+        Assert.Equal(0, await database.ScalarAsync("SELECT BasarisizGiris FROM dbo.Kullanicilar WHERE KullaniciAdi = N'ucustaki'", Ct));
+        Assert.Equal(lockEnd, await database.TextAsync("SELECT CONVERT(nvarchar(40), KilitBitis, 126) FROM dbo.Kullanicilar WHERE KullaniciAdi = N'ucustaki'", Ct));
+    }
+
+    /// <summary>
+    /// A wrong password read before an admin set a new password (which also lifts any lock) and written
+    /// after it counts nothing against the new password: the failure belonged to the old credential and
+    /// the old session version.
+    /// </summary>
+    [Fact]
+    public async Task SignIn_FailureInFlightWhenThePasswordIsReset_CountsNothing()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        var hasher = new GatedHasher();
+        await using var a = database.BuildServices(services => services.AddSingleton<IPasswordHasher>(hasher), demo: true);
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var customer = await RegisterAsync(a, "sifirlanan", 1);
+        var auth = a.GetRequiredService<IAuthService>();
+        for (var i = 0; i < LoginPolicy.MaxFailedAttempts - 1; i++)
+        {
+            await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInAsync("sifirlanan", "Yanlis.Sifre1", Ct));
+        }
+
+        var gate = hasher.Gate();
+        var stale = Task.Run(() => auth.SignInAsync("sifirlanan", "Yanlis.Sifre1", Ct), Ct);
+        await gate.Entered.WaitAsync(Ct);
+        await a.GetRequiredService<IAccountService>().UpdateLoadedAsync(
+            Admin(SeedAdminId),
+            customer.UserId,
+            new AccountInput("sifirlanan", "Yeni.Sifre123", "sifirlanan@example.com", "5540000001", UserRole.User),
+            Ct);
+
+        gate.Release.SetResult();
+        await Assert.ThrowsAsync<BusinessRuleException>(() => stale);
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE KullaniciAdi = N'sifirlanan' AND BasarisizGiris = 0 AND KilitBitis IS NULL", Ct));
+        Assert.Equal(customer.UserId, (await auth.SignInAsync("sifirlanan", "Yeni.Sifre123", Ct)).UserId);
+    }
+
     [Fact]
     public async Task UpdateAccount_TwoAdminsDemoteEachOther_OneAdminRemains()
     {
@@ -143,16 +216,16 @@ public sealed class SqlServerConcurrencyTests
         for (var round = 0; round < Rounds; round++)
         {
             var accounts = a.GetRequiredService<IAccountService>();
-            var x = await accounts.AddAsync(Admin(SeedAdminId), Input("xadmin" + round, 200 + round, UserRole.Admin), Ct);
-            var y = await accounts.AddAsync(Admin(SeedAdminId), Input("yadmin" + round, 300 + round, UserRole.Admin), Ct);
+            var x = await accounts.AddAsync(await CurrentSessionAsync(a, SeedAdminId), Input("xadmin" + round, 200 + round, UserRole.Admin), Ct);
+            var y = await accounts.AddAsync(await CurrentSessionAsync(a, SeedAdminId), Input("yadmin" + round, 300 + round, UserRole.Admin), Ct);
 
             // The seed admin steps down first, so x and y are the only admins.
-            await accounts.UpdateAsync(Admin(x), SeedAdminId, new AccountInput("yonetici", null, "yonetici@example.com", "5550000001", UserRole.User), Ct);
+            await accounts.UpdateLoadedAsync(Admin(x), SeedAdminId, new AccountInput("yonetici", null, "yonetici@example.com", "5550000001", UserRole.User), Ct);
 
             var results = await RaceAsync(
             [
-                () => a.GetRequiredService<IAccountService>().UpdateAsync(Admin(x), y, Input("yadmin" + round, 300 + round, UserRole.User), Ct),
-                () => b.GetRequiredService<IAccountService>().UpdateAsync(Admin(y), x, Input("xadmin" + round, 200 + round, UserRole.User), Ct),
+                () => a.GetRequiredService<IAccountService>().UpdateLoadedAsync(Admin(x), y, Input("yadmin" + round, 300 + round, UserRole.User), Ct),
+                () => b.GetRequiredService<IAccountService>().UpdateLoadedAsync(Admin(y), x, Input("xadmin" + round, 200 + round, UserRole.User), Ct),
             ]);
 
             // The second one to get the admin role lock has lost the role by then, so its open session
@@ -163,8 +236,8 @@ public sealed class SqlServerConcurrencyTests
 
             // Hand the role back to the seed admin for the next round.
             var remaining = await database.ScalarAsync("SELECT KullaniciID FROM dbo.Kullanicilar WHERE Rol = N'Admin'", Ct);
-            await accounts.UpdateAsync(Admin(remaining), SeedAdminId, new AccountInput("yonetici", null, "yonetici@example.com", "5550000001", UserRole.Admin), Ct);
-            await accounts.UpdateAsync(Admin(SeedAdminId), remaining, remaining == x ? Input("xadmin" + round, 200 + round, UserRole.User) : Input("yadmin" + round, 300 + round, UserRole.User), Ct);
+            await accounts.UpdateLoadedAsync(await CurrentSessionAsync(a, remaining), SeedAdminId, new AccountInput("yonetici", null, "yonetici@example.com", "5550000001", UserRole.Admin), Ct);
+            await accounts.UpdateLoadedAsync(await CurrentSessionAsync(a, SeedAdminId), remaining, remaining == x ? Input("xadmin" + round, 200 + round, UserRole.User) : Input("yadmin" + round, 300 + round, UserRole.User), Ct);
         }
     }
 
@@ -193,7 +266,8 @@ public sealed class SqlServerConcurrencyTests
 
     /// <summary>
     /// The stored account decides on SQL Server too (the locking read of the actor's row): a demoted
-    /// admin's open session is refused everywhere, and a deleted customer's session cannot rent.
+    /// admin's open session is refused everywhere, so is the session of an admin whose password another
+    /// admin reset (the role stayed), and a deleted customer's session cannot rent.
     /// </summary>
     [Fact]
     public async Task RevokedSessions_AreRefusedAndChangeNothing()
@@ -206,29 +280,36 @@ public sealed class SqlServerConcurrencyTests
         var second = Input("ikinci", 1, UserRole.Admin);
         var secondId = await accounts.AddAsync(Admin(SeedAdminId), second, Ct);
         var demoted = await b.GetRequiredService<IAuthService>().SignInAsync("ikinci", Password, Ct);
+        var third = Input("ucuncu", 3, UserRole.Admin);
+        var thirdId = await accounts.AddAsync(Admin(SeedAdminId), third, Ct);
+        var reset = await b.GetRequiredService<IAuthService>().SignInAsync("ucuncu", Password, Ct);
         var customer = await RegisterAsync(a, "giden", 2);
         var rental = await RentAsync(a, User(SeedUserId), ThreeCopiesFilmId);
 
-        await accounts.UpdateAsync(Admin(SeedAdminId), secondId, second with { Password = null, Role = UserRole.User }, Ct);
+        await accounts.UpdateLoadedAsync(Admin(SeedAdminId), secondId, second with { Password = null, Role = UserRole.User }, Ct);
         await accounts.DeleteAsync(Admin(SeedAdminId), customer.UserId, Ct);
+        await accounts.UpdateLoadedAsync(Admin(SeedAdminId), thirdId, third with { Password = "Yeni.Sifre123" }, Ct);
 
         var films = b.GetRequiredService<IFilmService>();
         var rentals = b.GetRequiredService<IRentalService>();
         List<Func<Task>> refused =
         [
-            () => b.GetRequiredService<IAccountService>().UpdateAsync(demoted, secondId, second with { Password = null }, Ct),
+            () => b.GetRequiredService<IAccountService>().UpdateLoadedAsync(demoted, secondId, second with { Password = null }, Ct),
             () => b.GetRequiredService<IAccountService>().GetAllAsync(demoted, Ct),
             () => films.AddAsync(demoted, new FilmInput("Yeni", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 1, true), Ct),
             () => films.DeleteAsync(demoted, ThreeCopiesFilmId, Ct),
             () => rentals.ReturnAsync(demoted, rental.RentalId, Ct),
             async () => await rentals.RentAsync(customer, await rentals.QuoteAsync(ThreeCopiesFilmId, 25m, 1, Ct), Ct),
+            () => films.AddAsync(reset, new FilmInput("Yeni", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 1, true), Ct),
+            () => b.GetRequiredService<IAccountService>().UpdateLoadedAsync(reset, thirdId, third, Ct),
         ];
         foreach (var operation in refused)
         {
             Assert.Equal(AccessDeniedException.SessionRevokedMessage, (await Assert.ThrowsAsync<AccessDeniedException>(operation)).Message);
         }
 
-        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE Rol = N'Admin'", Ct));
+        Assert.Equal(2, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE Rol = N'Admin'", Ct));
+        Assert.Equal(1, await database.ScalarAsync("SELECT OturumSurumu FROM dbo.Kullanicilar WHERE KullaniciID = @id", Ct, ("@id", thirdId)));
         Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Filmler WHERE Ad = N'Yeni'", Ct));
         await AssertStockAsync(database, ThreeCopiesFilmId, active: 1, available: 2);
     }
@@ -332,6 +413,39 @@ public sealed class SqlServerConcurrencyTests
             Assert.Equal(FilmKiralama.Business.Watchlists.WatchlistService.ListFull, Assert.IsType<BusinessRuleException>(Assert.Single(results, r => r is not null)).Message);
             Assert.Equal(limit, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.IzlemeListesi WHERE KullaniciID = @user", Ct, ("@user", customer.UserId)));
         }
+    }
+
+    /// <summary>
+    /// The test's password hasher: each <see cref="Gate"/> holds one later password check, after the
+    /// check and before the sign-in writes its outcome, until the test releases it.
+    /// </summary>
+    private sealed class GatedHasher : IPasswordHasher
+    {
+        private readonly PasswordHasher _inner = new(iterations: 1_000);
+        private readonly System.Collections.Concurrent.ConcurrentQueue<(TaskCompletionSource Entered, TaskCompletionSource Release)> _gates = new();
+
+        public (Task Entered, TaskCompletionSource Release) Gate()
+        {
+            var gate = (new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously), new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+            _gates.Enqueue(gate);
+            return (gate.Item1.Task, gate.Item2);
+        }
+
+        public string Hash(string password) => _inner.Hash(password);
+
+        public PasswordVerificationResult Verify(string password, string stored, PasswordFormat format)
+        {
+            var result = _inner.Verify(password, stored, format);
+            if (_gates.TryDequeue(out var gate))
+            {
+                gate.Entered.SetResult();
+                gate.Release.Task.Wait(Ct);
+            }
+
+            return result;
+        }
+
+        public void SimulateVerification(string password) => _inner.SimulateVerification(password);
     }
 
     private static AccountInput Input(string name, int number, UserRole role) =>

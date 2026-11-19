@@ -21,7 +21,7 @@ public sealed class WatchlistServiceTests
     [Fact]
     public async Task Add_NewFilm_IsRecordedAndAFilmAlreadyListedIsNot()
     {
-        _watchlists.SetupSequence(w => w.AddAsync(Sessions.User.UserId, 3, Now, WatchlistPolicy.MaxEntries, It.IsAny<CancellationToken>()))
+        _watchlists.SetupSequence(w => w.AddAsync(Sessions.User.Actor, 3, Now, WatchlistPolicy.MaxEntries, It.IsAny<CancellationToken>()))
             .ReturnsAsync(WatchlistAddOutcome.Added)
             .ReturnsAsync(WatchlistAddOutcome.AlreadyListed);
 
@@ -36,7 +36,7 @@ public sealed class WatchlistServiceTests
     [InlineData(WatchlistAddOutcome.ListFull)]
     public async Task Add_Refused_IsARuleMessageWithoutAnEntry(WatchlistAddOutcome outcome)
     {
-        _watchlists.Setup(w => w.AddAsync(Sessions.User.UserId, 3, Now, WatchlistPolicy.MaxEntries, It.IsAny<CancellationToken>())).ReturnsAsync(outcome);
+        _watchlists.Setup(w => w.AddAsync(Sessions.User.Actor, 3, Now, WatchlistPolicy.MaxEntries, It.IsAny<CancellationToken>())).ReturnsAsync(outcome);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().AddAsync(Sessions.User, 3, Ct));
 
@@ -47,7 +47,7 @@ public sealed class WatchlistServiceTests
     [Fact]
     public async Task Remove_AnotherAccountsOrAMissingEntry_GetsOneAnswerAndNoEntry()
     {
-        _watchlists.Setup(w => w.RemoveAsync(Sessions.User.UserId, 9, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _watchlists.Setup(w => w.RemoveAsync(Sessions.User.Actor, 9, It.IsAny<CancellationToken>())).ReturnsAsync(false);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().RemoveAsync(Sessions.User, 9, Ct));
 
@@ -59,7 +59,7 @@ public sealed class WatchlistServiceTests
     public async Task GetMine_ShowsAvailabilityAndTheAverage()
     {
         var film = new Film { Id = 3, Title = "Sisli Liman", IsListed = true, AvailableCopies = 1 };
-        _watchlists.Setup(w => w.GetAsync(Sessions.User.UserId, It.IsAny<CancellationToken>()))
+        _watchlists.Setup(w => w.GetAsync(Sessions.User.Actor, It.IsAny<CancellationToken>()))
             .ReturnsAsync([new WatchlistItem(9, film, new RatingTotals(2, 7), Now.AddDays(-1))]);
 
         var entry = Assert.Single(await Service().GetMineAsync(Sessions.User, Ct));
@@ -70,7 +70,7 @@ public sealed class WatchlistServiceTests
     [Fact]
     public async Task Calls_ForAnAccountThatIsGone_AskToSignInAgain()
     {
-        _watchlists.Setup(w => w.GetAsync(Sessions.User.UserId, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
+        _watchlists.Setup(w => w.GetAsync(Sessions.User.Actor, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
 
         var error = await Assert.ThrowsAsync<AccessDeniedException>(() => Service().GetMineAsync(Sessions.User, Ct));
 

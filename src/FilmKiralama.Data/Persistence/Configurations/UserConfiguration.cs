@@ -19,6 +19,7 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
             table.HasCheckConstraint("CK_Kullanicilar_Rol", SchemaLimits.RoleCheck);
             table.HasCheckConstraint("CK_Kullanicilar_BasarisizGiris", SchemaLimits.FailedLoginCheck);
             table.HasCheckConstraint("CK_Kullanicilar_SifreBicimi", SchemaLimits.PasswordFormatCheck);
+            table.HasCheckConstraint("CK_Kullanicilar_OturumSurumu", SchemaLimits.SessionVersionCheck);
         });
 
         builder.HasKey(u => u.Id).HasName("PK_Kullanicilar");
@@ -31,6 +32,7 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.Phone).HasColumnName("Telefon").HasMaxLength(SchemaLimits.PhoneLength).IsUnicode(false);
         builder.Property(u => u.FailedLoginCount).HasColumnName("BasarisizGiris");
         builder.Property(u => u.LockoutEnd).HasColumnName("KilitBitis");
+        builder.Property(u => u.SessionVersion).HasColumnName("OturumSurumu").HasDefaultValue(0);
 
         builder.HasIndex(u => u.UserName, "IX_Kullanicilar_KullaniciAdi").IsUnique();
         builder.HasIndex(u => u.Email, "IX_Kullanicilar_Eposta").IsUnique().HasFilter(SchemaLimits.EmailFilter);

@@ -43,12 +43,12 @@ internal sealed class SyntheticCinema :
 
     private readonly List<UserSummary> _accounts =
     [
-        new(1, "yonetici", "yonetici@example.com", "555 010 2030", UserRole.Admin),
-        new(2, "ilgin", "ilgin@example.com", "555 210 4455", UserRole.User),
-        new(3, "mert.akdogan", "mert.akdogan@example.com", null, UserRole.User),
-        new(4, "deniz.su", "deniz.su@example.com", "555 360 1122", UserRole.User),
-        new(5, "kasaci", "kasa@example.com", "555 470 9988", UserRole.Admin),
-        new(6, "zeynepnurkaramanlioglu", "zeynep.nur@example.com", null, UserRole.User),
+        new(1, "yonetici", "yonetici@example.com", "555 010 2030", UserRole.Admin, 0),
+        new(2, "ilgin", "ilgin@example.com", "555 210 4455", UserRole.User, 0),
+        new(3, "mert.akdogan", "mert.akdogan@example.com", null, UserRole.User, 0),
+        new(4, "deniz.su", "deniz.su@example.com", "555 360 1122", UserRole.User, 0),
+        new(5, "kasaci", "kasa@example.com", "555 470 9988", UserRole.Admin, 0),
+        new(6, "zeynepnurkaramanlioglu", "zeynep.nur@example.com", null, UserRole.User, 0),
     ];
 
     public SyntheticCinema()
@@ -108,7 +108,7 @@ internal sealed class SyntheticCinema :
             typeof(UserSession),
             BindingFlags.Instance | BindingFlags.NonPublic,
             binder: null,
-            args: [id, name, role],
+            args: [id, name, role, 0],
             culture: null)!;
 
     private static RentalDetails Rental(int id, CatalogItem item, int userId, string userName, DateOnly rentedOn, int days) =>
@@ -168,7 +168,7 @@ internal sealed class SyntheticCinema :
 
     public Task<int> AddAsync(UserSession session, FilmInput input, CancellationToken cancellationToken = default) => Task.FromResult(16);
 
-    public Task UpdateAsync(UserSession session, int filmId, FilmInput input, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task UpdateAsync(UserSession session, int filmId, int expectedVersion, FilmInput input, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public Task DeleteAsync(UserSession session, int filmId, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
@@ -312,7 +312,7 @@ internal sealed class SyntheticCinema :
 
     public Task<int> AddAsync(UserSession session, AccountInput input, CancellationToken cancellationToken = default) => Task.FromResult(7);
 
-    public Task UpdateAsync(UserSession session, int userId, AccountInput input, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task UpdateAsync(UserSession session, int userId, int expectedVersion, AccountInput input, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     Task IAccountService.DeleteAsync(UserSession session, int userId, CancellationToken cancellationToken) => Task.CompletedTask;
 }

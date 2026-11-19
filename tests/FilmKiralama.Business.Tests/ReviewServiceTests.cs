@@ -39,7 +39,7 @@ public sealed class ReviewServiceTests
     [InlineData(5)]
     public async Task Save_RatingAtTheLimits_IsStored(int rating)
     {
-        _reviews.Setup(r => r.SaveAsync(Sessions.User.UserId, 3, rating, null, Now, It.IsAny<CancellationToken>())).ReturnsAsync(ReviewSaveOutcome.Created);
+        _reviews.Setup(r => r.SaveAsync(Sessions.User.Actor, 3, rating, null, Now, It.IsAny<CancellationToken>())).ReturnsAsync(ReviewSaveOutcome.Created);
 
         await Service().SaveAsync(Sessions.User, 3, new ReviewInput(rating, "   "), Ct);
 
@@ -50,7 +50,7 @@ public sealed class ReviewServiceTests
     public async Task Save_CommentOfTheLongestLength_IsStoredTrimmedAndOneMoreIsRefused()
     {
         var longest = new string('a', ReviewPolicy.MaxCommentLength);
-        _reviews.Setup(r => r.SaveAsync(Sessions.User.UserId, 3, 4, longest, Now, It.IsAny<CancellationToken>())).ReturnsAsync(ReviewSaveOutcome.Updated);
+        _reviews.Setup(r => r.SaveAsync(Sessions.User.Actor, 3, 4, longest, Now, It.IsAny<CancellationToken>())).ReturnsAsync(ReviewSaveOutcome.Updated);
 
         await Service().SaveAsync(Sessions.User, 3, new ReviewInput(4, "  " + longest + "  "), Ct);
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().SaveAsync(Sessions.User, 3, new ReviewInput(4, longest + "b"), Ct));
@@ -64,7 +64,7 @@ public sealed class ReviewServiceTests
     public async Task Save_CommentWithMarkupAndFormulaCharacters_IsStoredAsTyped()
     {
         const string Comment = "<b>Harika</b> & <script>alert(1)</script> =1+1 😀";
-        _reviews.Setup(r => r.SaveAsync(Sessions.User.UserId, 3, 5, Comment, Now, It.IsAny<CancellationToken>())).ReturnsAsync(ReviewSaveOutcome.Created);
+        _reviews.Setup(r => r.SaveAsync(Sessions.User.Actor, 3, 5, Comment, Now, It.IsAny<CancellationToken>())).ReturnsAsync(ReviewSaveOutcome.Created);
 
         await Service().SaveAsync(Sessions.User, 3, new ReviewInput(5, Comment), Ct);
 
@@ -101,7 +101,7 @@ public sealed class ReviewServiceTests
     [Fact]
     public async Task Save_FilmNeverReturned_IsRefusedAndNotRecorded()
     {
-        _reviews.Setup(r => r.SaveAsync(Sessions.User.UserId, 3, 4, null, Now, It.IsAny<CancellationToken>())).ReturnsAsync(ReviewSaveOutcome.NotEligible);
+        _reviews.Setup(r => r.SaveAsync(Sessions.User.Actor, 3, 4, null, Now, It.IsAny<CancellationToken>())).ReturnsAsync(ReviewSaveOutcome.NotEligible);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().SaveAsync(Sessions.User, 3, new ReviewInput(4, null), Ct));
 
@@ -113,7 +113,7 @@ public sealed class ReviewServiceTests
     [Fact]
     public async Task Save_NewAndChangedReview_ShareOneAuditCode()
     {
-        _reviews.SetupSequence(r => r.SaveAsync(Sessions.User.UserId, 3, 4, "iyi", Now, It.IsAny<CancellationToken>()))
+        _reviews.SetupSequence(r => r.SaveAsync(Sessions.User.Actor, 3, 4, "iyi", Now, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ReviewSaveOutcome.Created)
             .ReturnsAsync(ReviewSaveOutcome.Updated);
 
@@ -126,7 +126,7 @@ public sealed class ReviewServiceTests
     [Fact]
     public async Task DeleteOwn_MissingOrForeignReview_GetsOneAnswerAndNoEntry()
     {
-        _reviews.Setup(r => r.DeleteOwnAsync(Sessions.User.UserId, 7, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _reviews.Setup(r => r.DeleteOwnAsync(Sessions.User.Actor, 7, It.IsAny<CancellationToken>())).ReturnsAsync(false);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().DeleteOwnAsync(Sessions.User, 7, Ct));
 
@@ -137,8 +137,8 @@ public sealed class ReviewServiceTests
     [Fact]
     public async Task FilmReviews_AverageIsRoundedAndAuthorsAreMasked()
     {
-        _films.Setup(f => f.FindAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(new Film { Id = 3, IsListed = true });
-        _reviews.Setup(r => r.GetVisibleAsync(Sessions.User.UserId, 3, ReviewPolicy.ShownWithFilm, It.IsAny<CancellationToken>()))
+        _films.Setup(f => f.FindAsync(Sessions.User.Actor, 3, It.IsAny<CancellationToken>())).ReturnsAsync(new Film { Id = 3, IsListed = true });
+        _reviews.Setup(r => r.GetVisibleAsync(Sessions.User.Actor, 3, ReviewPolicy.ShownWithFilm, It.IsAny<CancellationToken>()))
             .ReturnsAsync(([new ReviewDetails(1, 3, "Film", 9, "ılgaz.deniz", 4, "Güzel", false, Now.AddDays(-1))], new RatingTotals(3, 11)));
 
         var result = await Service().GetFilmReviewsAsync(Sessions.User, 3, Ct);
@@ -154,7 +154,7 @@ public sealed class ReviewServiceTests
     [Fact]
     public async Task FilmReviews_OfAnUnlistedFilm_AreMissingForCustomers()
     {
-        _films.Setup(f => f.FindAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(new Film { Id = 3, IsListed = false });
+        _films.Setup(f => f.FindAsync(Sessions.User.Actor, 3, It.IsAny<CancellationToken>())).ReturnsAsync((Film?)null);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().GetFilmReviewsAsync(Sessions.User, 3, Ct));
 
@@ -175,8 +175,8 @@ public sealed class ReviewServiceTests
     [Fact]
     public async Task Moderation_MissingReview_IsReportedAndAnExistingOneRecorded()
     {
-        _reviews.Setup(r => r.SetHiddenAsync(Sessions.Admin.UserId, 7, true, It.IsAny<CancellationToken>())).ReturnsAsync(false);
-        _reviews.Setup(r => r.SetHiddenAsync(Sessions.Admin.UserId, 8, true, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _reviews.Setup(r => r.SetHiddenAsync(Sessions.Admin.Actor, 7, true, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _reviews.Setup(r => r.SetHiddenAsync(Sessions.Admin.Actor, 8, true, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().SetHiddenAsync(Sessions.Admin, 7, true, Ct));
         await Service().SetHiddenAsync(Sessions.Admin, 8, true, Ct);
@@ -188,7 +188,7 @@ public sealed class ReviewServiceTests
     [Fact]
     public async Task Moderation_ByARevokedAdmin_AsksToSignInAgain()
     {
-        _reviews.Setup(r => r.SetHiddenAsync(Sessions.Admin.UserId, 8, true, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
+        _reviews.Setup(r => r.SetHiddenAsync(Sessions.Admin.Actor, 8, true, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
 
         var error = await Assert.ThrowsAsync<AccessDeniedException>(() => Service().SetHiddenAsync(Sessions.Admin, 8, true, Ct));
 

@@ -52,7 +52,7 @@ internal sealed class WatchlistService(
         var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
         var outcome = await audit.AsActorAsync(
             session,
-            () => watchlists.AddAsync(session.UserId, filmId, now, WatchlistPolicy.MaxEntries, cancellationToken)).ConfigureAwait(false);
+            () => watchlists.AddAsync(session.Actor, filmId, now, WatchlistPolicy.MaxEntries, cancellationToken)).ConfigureAwait(false);
         switch (outcome)
         {
             case WatchlistAddOutcome.Added:
@@ -70,7 +70,7 @@ internal sealed class WatchlistService(
     public async Task RemoveAsync(UserSession session, int entryId, CancellationToken cancellationToken = default)
     {
         Access.RequireSignedIn(session);
-        var removed = await audit.AsActorAsync(session, () => watchlists.RemoveAsync(session.UserId, entryId, cancellationToken)).ConfigureAwait(false);
+        var removed = await audit.AsActorAsync(session, () => watchlists.RemoveAsync(session.Actor, entryId, cancellationToken)).ConfigureAwait(false);
         if (!removed)
         {
             throw new BusinessRuleException(EntryNotFound);
@@ -82,7 +82,7 @@ internal sealed class WatchlistService(
     public async Task<IReadOnlyList<WatchlistView>> GetMineAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         Access.RequireSignedIn(session);
-        var items = await audit.AsActorAsync(session, () => watchlists.GetAsync(session.UserId, cancellationToken)).ConfigureAwait(false);
+        var items = await audit.AsActorAsync(session, () => watchlists.GetAsync(session.Actor, cancellationToken)).ConfigureAwait(false);
         var zone = timeProvider.LocalTimeZone;
         return
         [

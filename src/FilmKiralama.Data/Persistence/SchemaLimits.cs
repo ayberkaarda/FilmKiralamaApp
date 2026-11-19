@@ -41,10 +41,14 @@ internal static class SchemaLimits
     /// <summary>Values of <see cref="Domain.Entities.PasswordFormat"/>: 0 PBKDF2 hash, 1 legacy plain text.</summary>
     public const string PasswordFormatCheck = "[SifreBicimi] IN (0, 1)";
 
+    public const string SessionVersionCheck = "[OturumSurumu] >= 0";
+
     public const string DailyPriceCheck = "[GunlukUcret] > 0";
 
     /// <summary>The shelf can neither go negative nor hold more copies than the shop owns.</summary>
     public const string CopiesCheck = "[Adet] >= 0 AND [MevcutAdet] >= 0 AND [MevcutAdet] <= [Adet]";
+
+    public const string FilmVersionCheck = "[Surum] >= 1";
 
     /// <summary>Values of <see cref="Domain.Entities.RentalStatus"/>: 0 active, 1 returned.</summary>
     public const string RentalStatusCheck = "[Durum] IN (0, 1)";

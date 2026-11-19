@@ -89,7 +89,7 @@ internal sealed class ReviewService(
         var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
         var outcome = await audit.AsActorAsync(
             session,
-            () => reviews.SaveAsync(session.UserId, filmId, fields.Rating, comment, now, cancellationToken)).ConfigureAwait(false);
+            () => reviews.SaveAsync(session.Actor, filmId, fields.Rating, comment, now, cancellationToken)).ConfigureAwait(false);
         if (outcome == ReviewSaveOutcome.NotEligible)
         {
             throw new BusinessRuleException(NotEligible);
@@ -102,14 +102,14 @@ internal sealed class ReviewService(
     public async Task<OwnReview?> GetOwnAsync(UserSession session, int filmId, CancellationToken cancellationToken = default)
     {
         Access.RequireSignedIn(session);
-        var review = await audit.AsActorAsync(session, () => reviews.FindOwnAsync(session.UserId, filmId, cancellationToken)).ConfigureAwait(false);
+        var review = await audit.AsActorAsync(session, () => reviews.FindOwnAsync(session.Actor, filmId, cancellationToken)).ConfigureAwait(false);
         return review is null ? null : new OwnReview(review.Id, review.FilmId, review.Rating, review.Comment, review.IsHidden);
     }
 
     public async Task DeleteOwnAsync(UserSession session, int reviewId, CancellationToken cancellationToken = default)
     {
         Access.RequireSignedIn(session);
-        var deleted = await audit.AsActorAsync(session, () => reviews.DeleteOwnAsync(session.UserId, reviewId, cancellationToken)).ConfigureAwait(false);
+        var deleted = await audit.AsActorAsync(session, () => reviews.DeleteOwnAsync(session.Actor, reviewId, cancellationToken)).ConfigureAwait(false);
         if (!deleted)
         {
             throw new BusinessRuleException(ReviewNotFound);
@@ -122,16 +122,16 @@ internal sealed class ReviewService(
     {
         Access.RequireSignedIn(session);
 
-        // The reviews of a film a customer may not see are as missing as the film.
-        var film = await films.FindAsync(filmId, cancellationToken).ConfigureAwait(false);
-        if (film is null || (!film.IsListed && !session.IsAdmin))
+        // The reviews of a film the account may not see (decided with its stored role) are as missing as
+        // the film.
+        if (await audit.AsActorAsync(session, () => films.FindAsync(session.Actor, filmId, cancellationToken)).ConfigureAwait(false) is null)
         {
             throw new BusinessRuleException(FilmNotFound);
         }
 
         var (visible, totals) = await audit.AsActorAsync(
             session,
-            () => reviews.GetVisibleAsync(session.UserId, filmId, ReviewPolicy.ShownWithFilm, cancellationToken)).ConfigureAwait(false);
+            () => reviews.GetVisibleAsync(session.Actor, filmId, ReviewPolicy.ShownWithFilm, cancellationToken)).ConfigureAwait(false);
         var zone = timeProvider.LocalTimeZone;
         return new FilmReviews(
             RatingMath.Average(totals),
@@ -148,19 +148,19 @@ internal sealed class ReviewService(
     public Task<IReadOnlyList<ReviewableFilm>> GetReviewableAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         Access.RequireSignedIn(session);
-        return audit.AsActorAsync(session, () => reviews.GetReviewableAsync(session.UserId, cancellationToken));
+        return audit.AsActorAsync(session, () => reviews.GetReviewableAsync(session.Actor, cancellationToken));
     }
 
     public Task<PagedResult<ReviewDetails>> GetAllAsync(UserSession session, bool hiddenOnly, int page, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
-        return audit.AsActorAsync(session, () => reviews.GetAllAsync(session.UserId, hiddenOnly, Math.Max(1, page), ReviewPolicy.AdminPageSize, cancellationToken));
+        return audit.AsActorAsync(session, () => reviews.GetAllAsync(session.Actor, hiddenOnly, Math.Max(1, page), ReviewPolicy.AdminPageSize, cancellationToken));
     }
 
     public async Task SetHiddenAsync(UserSession session, int reviewId, bool hidden, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
-        var changed = await audit.AsActorAsync(session, () => reviews.SetHiddenAsync(session.UserId, reviewId, hidden, cancellationToken)).ConfigureAwait(false);
+        var changed = await audit.AsActorAsync(session, () => reviews.SetHiddenAsync(session.Actor, reviewId, hidden, cancellationToken)).ConfigureAwait(false);
         if (!changed)
         {
             throw new BusinessRuleException(ReviewNotFound);

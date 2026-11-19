@@ -112,7 +112,7 @@ public sealed class ListingTests
             .ToList();
 
         Assert.Equal(["KullaniciID", "KullaniciAdi", "Eposta", "Telefon", "Rol"], names);
-        Assert.Equal("Müşteri", new UserRow(new UserSummary(2, "ornek", null, null, UserRole.User)).Role);
+        Assert.Equal("Müşteri", new UserRow(new UserSummary(2, "ornek", null, null, UserRole.User, 0)).Role);
     }
 
     [Theory]

@@ -28,7 +28,7 @@ internal sealed class RecommendationService(IReportRepository reports, IAuditLog
     public async Task<IReadOnlyList<CatalogItem>> GetForMeAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         Access.RequireSignedIn(session);
-        var genres = await audit.AsActorAsync(session, () => reports.GetRentedGenresAsync(session.UserId, cancellationToken)).ConfigureAwait(false);
+        var genres = await audit.AsActorAsync(session, () => reports.GetRentedGenresAsync(session.Actor, cancellationToken)).ConfigureAwait(false);
         if (genres.Count == 0)
         {
             return [];
@@ -36,7 +36,7 @@ internal sealed class RecommendationService(IReportRepository reports, IAuditLog
 
         var most = genres.Max(g => g.Rentals);
         var favourites = genres.Where(g => g.Rentals == most).Select(g => g.Genre).ToList();
-        var candidates = await audit.AsActorAsync(session, () => reports.GetUnrentedAvailableAsync(session.UserId, favourites, cancellationToken)).ConfigureAwait(false);
+        var candidates = await audit.AsActorAsync(session, () => reports.GetUnrentedAvailableAsync(session.Actor, favourites, cancellationToken)).ConfigureAwait(false);
         return
         [
             .. candidates

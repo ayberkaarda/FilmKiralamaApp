@@ -89,8 +89,20 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) esas alınara
 
 - Yöneticinin gizlediği bir yorum hiçbir zaman kaldırılmaz: yazarı sildiğinde yorumu temizlenir ve her listenin
   dışında gizli kalır, böylece yeniden yazılan yorum da gizli olur (sütun `Silindi`, migration `AddReviewDeletion`).
-- Giriş, hesabı aramadan önce veritabanı saatini okur; böylece bilinen ve bilinmeyen adlar aynı gidiş-dönüşleri
-  yapar.
+- Hesapların bir oturum sürümü vardır (sütun `OturumSurumu`, migration `AddSessionVersion`). Yöneticinin verdiği
+  şifre, hesabın kendi şifre değişikliği ve rol değişikliği bu sürümü artırır; her işlem oturumun hesap numarasını,
+  sürümünü ve rolünü kendi veritabanı işleminin içinde denetler. Böylece şifresi sıfırlanan (rolü aynı kalan) bir
+  hesabın açık oturumu artık hiçbir şeyi yönetemez. Kendi şifresini değiştiren oturum çalışmaya devam eder.
+- Hesap ve film değişiklikleri formun yüklediği sürümü taşır ve bu arada başka bir yönetici kaydı değiştirdiyse
+  reddedilir; form kaydı yeniden yükler. Filmlere bunun için bir sürüm eklendi (sütun `Surum`, migration
+  `AddFilmVersion`); ayrıntılarının her değişikliği bu sürümü artırır, kiralama ve iade artırmaz.
+- Hatalı giriş yalnızca hesap veritabanının saatine göre kilitsizken ve denetlenen şifre ile oturum sürümü hâlâ
+  saklıyken sayılır; eşzamanlı bir hata hesabı kilitlediğinde ya da yönetici yeni şifre verdiğinde yolda olan bir
+  hata hiçbir şey saymaz. Yeni kilidin bitişi veritabanının saatine göre belirlenir.
+- Veritabanına ulaşan her giriş aynı çağrıları aynı sırayla yapar: bilinmeyen ad ve kilitli hesap da yanlış şifreyle
+  aynı hata yazmasıyla biter (hiçbir satırı değiştirmez). Cevap süresi sabit değildir.
+- Kiralamaya kapalı bir film ve yorumları yalnızca o anda veritabanında yönetici olan bir hesap için okunur.
+- Bir filmin olabileceği en yeni yıl bilgisayarın saatine değil veritabanının saatine göre belirlenir.
 - Silinmiş bir hesabın açık oturumu artık katalogda arama yapamaz, yorumları okuyamaz ya da öneri alamaz; yeniden
   denenen eşzamanlı yorum kaydı hesabı ve uygunluğu yeniden denetler.
 - Kullanıcı adları, e-posta adresleri, telefon numaraları, şifreler, kurulum anahtarları, film adları ve istisna

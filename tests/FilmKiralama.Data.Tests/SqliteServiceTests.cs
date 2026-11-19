@@ -231,14 +231,40 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         var accounts = _db.Get<IAccountService>();
         var demote = new AccountInput("yonetici", null, "yonetici@example.com", "5550000001", UserRole.User);
 
-        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => accounts.UpdateAsync(Admin(SeedAdminId), SeedAdminId, demote, Ct));
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => accounts.UpdateLoadedAsync(Admin(SeedAdminId), SeedAdminId, demote, Ct));
         Assert.Equal(AccountService.LastAdmin, error.Message);
 
         var second = await accounts.AddAsync(Admin(SeedAdminId), new AccountInput("ikinci", Password, "ikinci@example.com", "5550000003", UserRole.Admin), Ct);
-        await accounts.UpdateAsync(Admin(SeedAdminId), SeedAdminId, demote, Ct);
+        await accounts.UpdateLoadedAsync(Admin(SeedAdminId), SeedAdminId, demote, Ct);
 
         var all = await accounts.GetAllAsync(Admin(second), Ct);
         Assert.Equal(UserRole.User, all.Single(u => u.Id == SeedAdminId).Role);
+    }
+
+    /// <summary>
+    /// Admin A opened an admin's account; admin B demoted it meanwhile. A's save of an e-mail change, with
+    /// the admin role the old form still shows, is refused as stale and gives the role back to nobody. A
+    /// change made after loading the account again goes through.
+    /// </summary>
+    [Fact]
+    public async Task UpdateAccount_FromAFormLoadedBeforeADemotion_IsRefused()
+    {
+        var accounts = _db.Get<IAccountService>();
+        var input = new AccountInput("ikinci", Password, "ikinci@example.com", "5550000003", UserRole.Admin);
+        var second = await accounts.AddAsync(Admin(SeedAdminId), input, Ct);
+        var loadedByA = (await accounts.GetAllAsync(Admin(SeedAdminId), Ct)).Single(u => u.Id == second);
+
+        await accounts.UpdateAsync(Admin(SeedAdminId), second, loadedByA.Version, input with { Password = null, Role = UserRole.User }, Ct);
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => accounts.UpdateAsync(Admin(SeedAdminId), second, loadedByA.Version, input with { Password = null, Email = "yeni@example.com" }, Ct));
+
+        Assert.Equal(AccountService.ChangedElsewhere, error.Message);
+        Assert.True(error.IsStale);
+        var stored = (await accounts.GetAllAsync(Admin(SeedAdminId), Ct)).Single(u => u.Id == second);
+        Assert.Equal((UserRole.User, "ikinci@example.com"), (stored.Role, stored.Email));
+
+        await accounts.UpdateAsync(Admin(SeedAdminId), second, stored.Version, input with { Password = null, Role = UserRole.User, Email = "yeni@example.com" }, Ct);
+        Assert.Equal("yeni@example.com", (await accounts.GetAllAsync(Admin(SeedAdminId), Ct)).Single(u => u.Id == second).Email);
     }
 
     /// <summary>
@@ -259,17 +285,17 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         var rental = await RentAsync(_db.Services, User(SeedUserId), ThreeCopiesFilmId);
         var removable = await AddFilmAsync(_db.Services, "Silinmeyecek", 1);
 
-        await accounts.UpdateAsync(Admin(SeedAdminId), b, bInput with { Password = null, Role = UserRole.User }, Ct);
+        await accounts.UpdateLoadedAsync(Admin(SeedAdminId), b, bInput with { Password = null, Role = UserRole.User }, Ct);
 
         List<Func<Task>> refused =
         [
-            () => accounts.UpdateAsync(sessionB, b, bInput with { Password = null, Role = UserRole.Admin }, Ct),
-            () => accounts.UpdateAsync(sessionB, SeedUserId, new AccountInput("ornek", "Ele.Gecir12", "ornek@example.com", "5550000002", UserRole.Admin), Ct),
+            () => accounts.UpdateLoadedAsync(sessionB, b, bInput with { Password = null, Role = UserRole.Admin }, Ct),
+            () => accounts.UpdateLoadedAsync(sessionB, SeedUserId, new AccountInput("ornek", "Ele.Gecir12", "ornek@example.com", "5550000002", UserRole.Admin), Ct),
             () => accounts.AddAsync(sessionB, new AccountInput("yedek", Password, "yedek@example.com", "5550000004", UserRole.Admin), Ct),
             () => accounts.DeleteAsync(sessionB, SeedUserId, Ct),
             () => accounts.GetAllAsync(sessionB, Ct),
             () => films.AddAsync(sessionB, new FilmInput("Yeni", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 1, true), Ct),
-            () => films.UpdateAsync(sessionB, ThreeCopiesFilmId, new FilmInput("Degisti", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 9, true), Ct),
+            () => films.UpdateLoadedAsync(sessionB, ThreeCopiesFilmId, new FilmInput("Degisti", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 9, true), Ct),
             () => films.DeleteAsync(sessionB, removable, Ct),
             () => films.GetAllAsync(sessionB, Ct),
             () => rentals.ReturnAsync(sessionB, rental.RentalId, Ct),
@@ -344,11 +370,171 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.False(await check.Users.AnyAsync(u => u.Id == b || u.UserName == "ikinci", Ct));
     }
 
+    /// <summary>
+    /// The stored session version decides too: once it differs from the one a session carries, that
+    /// session reads and writes nothing, as an admin or as a customer, even though the account still exists
+    /// with the same role.
+    /// </summary>
+    [Fact]
+    public async Task SessionWithAnOutdatedVersion_IsRefusedEverywhere()
+    {
+        var auth = _db.Get<IAuthService>();
+        var admin = await auth.SignInAsync("yonetici", "Demo.Yonetici1", Ct);
+        var customer = await auth.SignInAsync("ornek", "Demo.Kullanici1", Ct);
+        var rental = await RentAsync(_db.Services, customer, ThreeCopiesFilmId);
+        await using (var db = _db.CreateContext())
+        {
+            await db.Users.ExecuteUpdateAsync(s => s.SetProperty(u => u.SessionVersion, u => u.SessionVersion + 1), Ct);
+        }
+
+        var films = _db.Get<IFilmService>();
+        var rentals = _db.Get<IRentalService>();
+        List<Func<Task>> refused =
+        [
+            () => _db.Get<IAccountService>().GetAllAsync(admin, Ct),
+            () => films.AddAsync(admin, new FilmInput("Yeni", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 1, true), Ct),
+            () => films.GetAllAsync(admin, Ct),
+            () => rentals.ReturnAsync(admin, rental.RentalId, Ct),
+            () => rentals.ReturnAsync(customer, rental.RentalId, Ct),
+            () => rentals.GetMyActiveRentalsAsync(customer, Ct),
+            () => films.SearchCatalogAsync(customer, new CatalogQuery(), Ct),
+            async () => await rentals.RentAsync(customer, await rentals.QuoteAsync(SingleCopyFilmId, 25m, 1, Ct), Ct),
+        ];
+        foreach (var operation in refused)
+        {
+            Assert.Equal(AccessDeniedException.SessionRevokedMessage, (await Assert.ThrowsAsync<AccessDeniedException>(operation)).Message);
+        }
+
+        await using (var check = _db.CreateContext())
+        {
+            Assert.False(await check.Films.AnyAsync(f => f.Title == "Yeni", Ct));
+        }
+
+        Assert.Equal(2, await AvailableAsync(ThreeCopiesFilmId));
+
+        // A new sign-in carries the stored version and works again.
+        var renewed = await auth.SignInAsync("ornek", "Demo.Kullanici1", Ct);
+        Assert.Equal(1, renewed.SessionVersion);
+        await rentals.ReturnAsync(renewed, rental.RentalId, Ct);
+    }
+
+    /// <summary>
+    /// A password set by another admin ends the account's open sessions even though its role stays the
+    /// same: whoever still holds the old session can manage nothing more. A new sign-in with the new
+    /// password works.
+    /// </summary>
+    [Fact]
+    public async Task PasswordResetByAnAdmin_RevokesTheAccountsOpenSessions()
+    {
+        var accounts = _db.Get<IAccountService>();
+        var auth = _db.Get<IAuthService>();
+        var input = new AccountInput("ikinci", Password, "ikinci@example.com", "5550000003", UserRole.Admin);
+        var second = await accounts.AddAsync(Admin(SeedAdminId), input, Ct);
+        var stolen = await auth.SignInAsync("ikinci", Password, Ct);
+
+        await accounts.UpdateLoadedAsync(Admin(SeedAdminId), second, input with { Password = "Yeni.Sifre123" }, Ct);
+
+        List<Func<Task>> refused =
+        [
+            () => accounts.GetAllAsync(stolen, Ct),
+            () => accounts.UpdateLoadedAsync(stolen, second, input with { Password = "Geri.Al12345" }, Ct),
+            () => _db.Get<IFilmService>().AddAsync(stolen, new FilmInput("Yeni", "Dram", "2020", "Ece Deneme", "10", null, "Deneme.", 1, true), Ct),
+        ];
+        foreach (var operation in refused)
+        {
+            Assert.Equal(AccessDeniedException.SessionRevokedMessage, (await Assert.ThrowsAsync<AccessDeniedException>(operation)).Message);
+        }
+
+        var fresh = await auth.SignInAsync("ikinci", "Yeni.Sifre123", Ct);
+        Assert.Equal(1, fresh.SessionVersion);
+        Assert.NotEmpty(await accounts.GetAllAsync(fresh, Ct));
+    }
+
+    /// <summary>
+    /// A role taken away and given back still ends the sessions issued before: the version only rises.
+    /// A change of the contact data alone ends nothing.
+    /// </summary>
+    [Fact]
+    public async Task RoleTakenAndGivenBack_KeepsTheOldSessionRevoked()
+    {
+        var accounts = _db.Get<IAccountService>();
+        var input = new AccountInput("ikinci", Password, "ikinci@example.com", "5550000003", UserRole.Admin);
+        var second = await accounts.AddAsync(Admin(SeedAdminId), input, Ct);
+        var old = await _db.Get<IAuthService>().SignInAsync("ikinci", Password, Ct);
+
+        await accounts.UpdateLoadedAsync(Admin(SeedAdminId), second, input with { Password = null, Email = "yeni@example.com" }, Ct);
+        Assert.NotEmpty(await accounts.GetAllAsync(old, Ct));
+
+        await accounts.UpdateLoadedAsync(Admin(SeedAdminId), second, input with { Password = null, Role = UserRole.User }, Ct);
+        await accounts.UpdateLoadedAsync(Admin(SeedAdminId), second, input with { Password = null, Role = UserRole.Admin }, Ct);
+
+        var error = await Assert.ThrowsAsync<AccessDeniedException>(() => accounts.GetAllAsync(old, Ct));
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, error.Message);
+        Assert.Equal(2, (await _db.Get<IAuthService>().SignInAsync("ikinci", Password, Ct)).SessionVersion);
+    }
+
+    /// <summary>
+    /// Changing one's own password keeps the session that changed it and ends every other session of the
+    /// account, also one that signed in before with the same password.
+    /// </summary>
+    [Fact]
+    public async Task OwnPasswordChange_KeepsThisSessionAndRevokesTheOthers()
+    {
+        var auth = _db.Get<IAuthService>();
+        var here = await auth.SignInAsync("ornek", "Demo.Kullanici1", Ct);
+        var elsewhere = await auth.SignInAsync("ornek", "Demo.Kullanici1", Ct);
+
+        await auth.ChangePasswordAsync(here, "Demo.Kullanici1", "Yeni.Sifre123", "Yeni.Sifre123", Ct);
+
+        Assert.Equal(1, here.SessionVersion);
+        await RentAsync(_db.Services, here, ThreeCopiesFilmId);
+        var error = await Assert.ThrowsAsync<AccessDeniedException>(() => _db.Get<IRentalService>().GetMyActiveRentalsAsync(elsewhere, Ct));
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, error.Message);
+
+        // The revoked session cannot change the password again either, even with the right one.
+        var again = await Assert.ThrowsAsync<AccessDeniedException>(() => auth.ChangePasswordAsync(elsewhere, "Yeni.Sifre123", "Baska.Sifre123", "Baska.Sifre123", Ct));
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, again.Message);
+        await auth.SignInAsync("ornek", "Yeni.Sifre123", Ct);
+    }
+
+    /// <summary>
+    /// An unlisted film and its reviews are found only for an account that is an admin in the database at
+    /// the moment of the read: a session that still says admin, but whose stored role is no longer admin
+    /// (changed by another tool that left the session version alone), finds neither, and a revoked
+    /// session is told to sign in again.
+    /// </summary>
+    [Fact]
+    public async Task UnlistedFilm_IsFoundOnlyForAStoredAdmin()
+    {
+        var films = _db.Get<IFilmService>();
+        var hidden = await AddFilmAsync(_db.Services, "Gizli Film", 1);
+        await UpdateFilmAsync(hidden, listed: false);
+        var admin = await _db.Get<IAuthService>().SignInAsync("yonetici", "Demo.Yonetici1", Ct);
+        Assert.Equal("Gizli Film", (await films.GetAsync(admin, hidden, Ct)).Title);
+        await _db.Get<IReviewService>().GetFilmReviewsAsync(admin, hidden, Ct);
+
+        await using (var db = _db.CreateContext())
+        {
+            await db.Users.Where(u => u.Id == SeedAdminId).ExecuteUpdateAsync(s => s.SetProperty(u => u.Role, UserRole.User), Ct);
+        }
+
+        Assert.Equal(FilmService.NotFound, (await Assert.ThrowsAsync<BusinessRuleException>(() => films.GetAsync(admin, hidden, Ct))).Message);
+        Assert.Equal(ReviewService.FilmNotFound, (await Assert.ThrowsAsync<BusinessRuleException>(() => _db.Get<IReviewService>().GetFilmReviewsAsync(admin, hidden, Ct))).Message);
+
+        await using (var db = _db.CreateContext())
+        {
+            await db.Users.Where(u => u.Id == SeedAdminId).ExecuteUpdateAsync(s => s.SetProperty(u => u.Role, UserRole.Admin).SetProperty(u => u.SessionVersion, 5), Ct);
+        }
+
+        var revoked = await Assert.ThrowsAsync<AccessDeniedException>(() => films.GetAsync(admin, ThreeCopiesFilmId, Ct));
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, revoked.Message);
+    }
+
     /// <summary>A customer cannot make itself an admin, whatever its session says.</summary>
     [Fact]
     public async Task UserSession_CannotRaiseItsOwnRole()
     {
-        var error = await Assert.ThrowsAsync<AccessDeniedException>(() => _db.Get<IAccountService>().UpdateAsync(
+        var error = await Assert.ThrowsAsync<AccessDeniedException>(() => _db.Get<IAccountService>().UpdateLoadedAsync(
             User(SeedUserId),
             SeedUserId,
             new AccountInput("ornek", null, "ornek@example.com", "5550000002", UserRole.Admin),
@@ -370,7 +556,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         }
 
         await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInAsync("baska", Password, Ct));
-        await _db.Get<IAccountService>().UpdateAsync(
+        await _db.Get<IAccountService>().UpdateLoadedAsync(
             Admin(SeedAdminId),
             other.UserId,
             new AccountInput("baska", "Yeni.Sifre12", "baska@example.com", "5540000001", UserRole.User),
@@ -392,6 +578,37 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInAsync("baska", Password, Ct));
         _db.Clock.Advance(TimeSpan.FromMinutes(15));
         await auth.SignInAsync("baska", Password, Ct);
+    }
+
+    /// <summary>
+    /// Attempts while the lock is in force, and attempts with a name no account has, make the same failure
+    /// write as a wrong password, but it changes nothing: the counter, the lock's end and every other
+    /// account stay as they were.
+    /// </summary>
+    [Fact]
+    public async Task SignIn_WhileLockedOrUnknown_ChangesNoAccount()
+    {
+        await RegisterAsync(_db.Services, "baska", 1);
+        var auth = _db.Get<IAuthService>();
+        for (var i = 0; i < 5; i++)
+        {
+            await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInAsync("baska", "Yanlis.Sifre1", Ct));
+        }
+
+        static async Task<List<(string, int, DateTime?)>> StateAsync(SqliteDatabase database)
+        {
+            await using var db = database.CreateContext();
+            return await db.Users.OrderBy(u => u.Id).Select(u => ValueTuple.Create(u.UserName, u.FailedLoginCount, u.LockoutEnd)).ToListAsync(Ct);
+        }
+
+        var locked = await StateAsync(_db);
+        _db.Clock.Advance(TimeSpan.FromMinutes(5));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInAsync("baska", "Yanlis.Sifre1", Ct));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInAsync("baska", Password, Ct));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInAsync("kimse", Password, Ct));
+
+        Assert.Equal(locked, await StateAsync(_db));
+        Assert.Contains(locked, a => a.Item1 == "baska" && a.Item2 == 0 && a.Item3 != null);
     }
 
     [Fact]
@@ -433,6 +650,34 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         return await db.Films.Where(f => f.Id == filmId).Select(f => f.AvailableCopies).SingleAsync(Ct);
     }
 
+    /// <summary>
+    /// Admin A opened a film; admin B changed its price meanwhile. A's save of the old form (with the old
+    /// price and another listing state) is refused as stale and writes nothing; after loading the film
+    /// again A's change goes through. Rentals and returns move only the shelf, never the version.
+    /// </summary>
+    [Fact]
+    public async Task UpdateFilm_FromAFormLoadedBeforeAnotherChange_IsRefused()
+    {
+        var films = _db.Get<IFilmService>();
+        var loadedByA = await films.GetAsync(Admin(SeedAdminId), ThreeCopiesFilmId, Ct);
+        var rental = await RentAsync(_db.Services, User(SeedUserId), ThreeCopiesFilmId);
+        await _db.Get<IRentalService>().ReturnAsync(User(SeedUserId), rental.RentalId, Ct);
+        Assert.Equal(loadedByA.Version, (await films.GetAsync(Admin(SeedAdminId), ThreeCopiesFilmId, Ct)).Version);
+
+        await UpdateFilmAsync(ThreeCopiesFilmId, price: "40");
+        var stale = new FilmInput(loadedByA.Title, loadedByA.Genre, loadedByA.Year.ToString(System.Globalization.CultureInfo.InvariantCulture), loadedByA.Director, "25", loadedByA.ImageUrl, loadedByA.About, 9, false);
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => films.UpdateAsync(Admin(SeedAdminId), ThreeCopiesFilmId, loadedByA.Version, stale, Ct));
+
+        Assert.Equal(FilmService.ChangedElsewhere, error.Message);
+        Assert.True(error.IsStale);
+        var current = await films.GetAsync(Admin(SeedAdminId), ThreeCopiesFilmId, Ct);
+        Assert.Equal((40m, 3, true, loadedByA.Version + 1), (current.DailyPrice, current.TotalCopies, current.IsListed, current.Version));
+
+        await films.UpdateAsync(Admin(SeedAdminId), ThreeCopiesFilmId, current.Version, stale, Ct);
+        var changed = await films.GetAsync(Admin(SeedAdminId), ThreeCopiesFilmId, Ct);
+        Assert.Equal((25m, 9, false), (changed.DailyPrice, changed.TotalCopies, changed.IsListed));
+    }
+
     private async Task UpdateFilmAsync(int filmId, string? price = null, int? copies = null, bool? listed = null)
     {
         var films = _db.Get<IFilmService>();
@@ -440,6 +685,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         await films.UpdateAsync(
             Admin(SeedAdminId),
             filmId,
+            film.Version,
             new FilmInput(
                 film.Title,
                 film.Genre,

@@ -76,8 +76,8 @@ internal sealed class ControlledAccountService : IAccountService
 {
     public List<UserSummary> Accounts { get; } =
     [
-        new(1, "yonetici", "yonetici@example.com", "555 010 2030", UserRole.Admin),
-        new(2, "ornek", "ornek@example.com", null, UserRole.User),
+        new(1, "yonetici", "yonetici@example.com", "555 010 2030", UserRole.Admin, 0),
+        new(2, "ornek", "ornek@example.com", null, UserRole.User, 0),
     ];
 
     public Task<IReadOnlyList<UserSummary>> GetAllAsync(UserSession session, CancellationToken cancellationToken = default) =>
@@ -85,7 +85,17 @@ internal sealed class ControlledAccountService : IAccountService
 
     public Task<int> AddAsync(UserSession session, AccountInput input, CancellationToken cancellationToken = default) => Task.FromResult(3);
 
-    public Task UpdateAsync(UserSession session, int userId, AccountInput input, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    /// <summary>Every change asked for: the account, the version its form loaded and the input.</summary>
+    public List<(int UserId, int Version, AccountInput Input)> Updates { get; } = [];
+
+    /// <summary>Thrown by the next change instead of completing it, when set.</summary>
+    public Exception? UpdateFailure { get; set; }
+
+    public Task UpdateAsync(UserSession session, int userId, int expectedVersion, AccountInput input, CancellationToken cancellationToken = default)
+    {
+        Updates.Add((userId, expectedVersion, input));
+        return UpdateFailure is { } failure ? Task.FromException(failure) : Task.CompletedTask;
+    }
 
     public Task DeleteAsync(UserSession session, int userId, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
@@ -173,7 +183,17 @@ internal sealed class ControlledFilmService : IFilmService
         return _add.Task;
     }
 
-    public Task UpdateAsync(UserSession session, int filmId, FilmInput input, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    /// <summary>Every change asked for: the film, the version its form loaded and the input.</summary>
+    public List<(int FilmId, int Version, FilmInput Input)> Updates { get; } = [];
+
+    /// <summary>Thrown by the next change instead of completing it, when set.</summary>
+    public Exception? UpdateFailure { get; set; }
+
+    public Task UpdateAsync(UserSession session, int filmId, int expectedVersion, FilmInput input, CancellationToken cancellationToken = default)
+    {
+        Updates.Add((filmId, expectedVersion, input));
+        return UpdateFailure is { } failure ? Task.FromException(failure) : Task.CompletedTask;
+    }
 
     public Task DeleteAsync(UserSession session, int filmId, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
@@ -420,7 +440,7 @@ internal sealed class NoFormsFactory : IFormFactory
 
 internal static class Sessions
 {
-    public static UserSession User { get; } = new(2, "ornek", UserRole.User);
+    public static UserSession User { get; } = new(2, "ornek", UserRole.User, sessionVersion: 0);
 
-    public static UserSession Admin { get; } = new(1, "yonetici", UserRole.Admin);
+    public static UserSession Admin { get; } = new(1, "yonetici", UserRole.Admin, sessionVersion: 0);
 }

@@ -30,6 +30,15 @@ public sealed class BusinessRuleException : Exception
 
     /// <summary>The invalid fields of the input and why; empty for other rules.</summary>
     public IReadOnlyDictionary<string, string> FieldErrors { get; } = new Dictionary<string, string>();
+
+    /// <summary>
+    /// Whether the record changed or disappeared since the form loaded it. Only then does a form load the
+    /// record again; any other refusal leaves what the user typed in place so it can be corrected.
+    /// </summary>
+    public bool IsStale { get; private init; }
+
+    /// <summary>A refusal because the record changed or disappeared since the form loaded it (see <see cref="IsStale"/>).</summary>
+    public static BusinessRuleException Stale(string message) => new(message) { IsStale = true };
 }
 
 /// <summary>
@@ -41,11 +50,11 @@ public sealed class AccessDeniedException : Exception
     internal const string DefaultMessage = "Bu işlem için yetkiniz yok.";
 
     /// <summary>
-    /// The one answer when the signed-in account was deleted or lost the role an operation needs after
-    /// the sign-in; the session has to end.
+    /// The one answer when, after the sign-in, the signed-in account was deleted, got a new password or a
+    /// new role, or lost the role an operation needs; the session has to end.
     /// </summary>
     internal const string SessionRevokedMessage =
-        "Hesabınızın yetkileri değişti veya hesabınız artık bulunmuyor. Lütfen oturumu kapatıp yeniden giriş yapın.";
+        "Hesabınızın şifresi ya da yetkileri değişti veya hesabınız artık bulunmuyor. Lütfen oturumu kapatıp yeniden giriş yapın.";
 
     public AccessDeniedException()
         : base(DefaultMessage)

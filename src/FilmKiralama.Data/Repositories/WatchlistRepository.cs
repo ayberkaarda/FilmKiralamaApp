@@ -7,8 +7,9 @@ namespace FilmKiralama.Data.Repositories;
 
 internal sealed class WatchlistRepository(IDbContextFactory<FilmDbContext> contextFactory) : IWatchlistRepository
 {
-    public async Task<WatchlistAddOutcome> AddAsync(int userId, int filmId, DateTime now, int maxEntries, CancellationToken cancellationToken = default)
+    public async Task<WatchlistAddOutcome> AddAsync(Actor actor, int filmId, DateTime now, int maxEntries, CancellationToken cancellationToken = default)
     {
+        var userId = actor.UserId;
         try
         {
             await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
@@ -17,7 +18,7 @@ internal sealed class WatchlistRepository(IDbContextFactory<FilmDbContext> conte
             // Taken before the list is read: the size limit and the duplicate check hold for adds that
             // run at the same time.
             await Locks.WatchlistAsync(db, userId, cancellationToken).ConfigureAwait(false);
-            await Actors.RequireAsync(db, userId, admin: false, cancellationToken).ConfigureAwait(false);
+            await Actors.RequireAsync(db, actor, admin: false, cancellationToken).ConfigureAwait(false);
 
             if (!await db.Films.AnyAsync(f => f.Id == filmId && f.IsListed, cancellationToken).ConfigureAwait(false))
             {
@@ -53,11 +54,12 @@ internal sealed class WatchlistRepository(IDbContextFactory<FilmDbContext> conte
         }
     }
 
-    public async Task<bool> RemoveAsync(int userId, int entryId, CancellationToken cancellationToken = default)
+    public async Task<bool> RemoveAsync(Actor actor, int entryId, CancellationToken cancellationToken = default)
     {
+        var userId = actor.UserId;
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-        await Actors.RequireAsync(db, userId, admin: false, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor, admin: false, cancellationToken).ConfigureAwait(false);
 
         // The owner is part of the condition: another account's entry is the same as none.
         var removed = await db.WatchlistEntries
@@ -68,10 +70,11 @@ internal sealed class WatchlistRepository(IDbContextFactory<FilmDbContext> conte
         return removed == 1;
     }
 
-    public async Task<IReadOnlyList<WatchlistItem>> GetAsync(int userId, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<WatchlistItem>> GetAsync(Actor actor, CancellationToken cancellationToken = default)
     {
+        var userId = actor.UserId;
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        await Actors.RequireAsync(db, userId, admin: false, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor, admin: false, cancellationToken).ConfigureAwait(false);
         var rows = await (
                 from entry in db.WatchlistEntries.AsNoTracking()
                 join film in db.Films.AsNoTracking() on entry.FilmId equals film.Id

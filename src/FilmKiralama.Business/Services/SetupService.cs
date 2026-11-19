@@ -113,7 +113,8 @@ internal sealed class SetupService(
         {
             case FirstAdminStatus.Created:
                 audit.Record(AuditEvent.FirstAdminCreated, AuditRole.Admin);
-                return new UserSession(result.AdminId, name, UserRole.Admin);
+                // A new account starts at session version 0.
+                return new UserSession(result.AdminId, name, UserRole.Admin, sessionVersion: 0);
             case FirstAdminStatus.NotAuthorized:
                 audit.Record(AuditEvent.SetupKeyRefused, AuditRole.Unknown);
                 await setupKeys.DelayAfterRefusalAsync(cancellationToken).ConfigureAwait(false);

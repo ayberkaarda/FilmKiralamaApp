@@ -9,10 +9,10 @@ public interface IRentalRepository
     /// Rents one copy: under the film's lock it checks that the film is listed, has a copy on the
     /// shelf, still costs <see cref="RentalRequest.ExpectedDailyPrice"/> a day and is not rented by the
     /// same account already, then stores the rental, takes the copy off the shelf and the film off the
-    /// account's watchlist. The renting account (<see cref="RentalRequest.UserId"/>) must still exist; it
-    /// is checked in the same transaction.
+    /// account's watchlist. The renting account (<see cref="RentalRequest.Actor"/>) must still exist with
+    /// the same session version; it is checked in the same transaction.
     /// </summary>
-    /// <exception cref="ActorRevokedException">The renting account no longer exists.</exception>
+    /// <exception cref="ActorRevokedException">The renting account no longer exists or its session was revoked.</exception>
     Task<RentResult> RentAsync(RentalRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -21,7 +21,7 @@ public interface IRentalRepository
     /// <paramref name="actor"/> that is not acting as an admin, a rental of another account is treated
     /// as missing. The actor is checked against the stored account in the same transaction.
     /// </summary>
-    /// <exception cref="ActorRevokedException">The actor no longer exists or is no longer an admin.</exception>
+    /// <exception cref="ActorRevokedException">The actor no longer exists, its session was revoked or it is no longer an admin.</exception>
     Task<ReturnResult> ReturnAsync(
         int rentalId,
         RentalActor actor,
@@ -33,25 +33,38 @@ public interface IRentalRepository
     /// Active rentals with film and account, ordered by id: every account's for an admin, otherwise the
     /// actor's own; only films matching <paramref name="filter"/>.
     /// </summary>
-    /// <exception cref="ActorRevokedException">The actor no longer exists or is no longer an admin.</exception>
+    /// <exception cref="ActorRevokedException">The actor no longer exists, its session was revoked or it is no longer an admin.</exception>
     Task<IReadOnlyList<RentalDetails>> GetActiveAsync(RentalActor actor, FilmFilter filter, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
 /// The signed-in account a rental operation acts for. <see cref="AsAdmin"/> reaches every account's
 /// rentals and needs the stored admin role; otherwise only the account's own rentals are reached and
-/// the account only has to exist.
+/// the account only has to exist. Either way the stored account must still have
+/// <see cref="SessionVersion"/>.
 /// </summary>
-public readonly record struct RentalActor(int UserId, bool AsAdmin);
+public readonly record struct RentalActor(int UserId, bool AsAdmin, int SessionVersion)
+{
+    /// <summary>The account as the repository checks it.</summary>
+    public Actor Actor => new(UserId, SessionVersion);
+}
 
-/// <summary>A rental to store; the price was computed from <see cref="ExpectedDailyPrice"/>.</summary>
+/// <summary>
+/// A rental to store for account <see cref="UserId"/>, whose session carries <see cref="SessionVersion"/>;
+/// the price was computed from <see cref="ExpectedDailyPrice"/>.
+/// </summary>
 public sealed record RentalRequest(
     int FilmId,
     int UserId,
     DateOnly RentedOn,
     DateOnly DueOn,
     decimal ExpectedDailyPrice,
-    decimal Price);
+    decimal Price,
+    int SessionVersion)
+{
+    /// <summary>The renting account as the repository checks it.</summary>
+    public Actor Actor => new(UserId, SessionVersion);
+}
 
 public enum RentOutcome
 {

@@ -23,7 +23,7 @@ public sealed class FilmServiceTests
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => service.GetAllAsync(Sessions.User, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => service.AddAsync(Sessions.User, Valid, Ct));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => service.UpdateAsync(Sessions.User, 1, Valid, Ct));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => service.UpdateAsync(Sessions.User, 1, 1, Valid, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => service.DeleteAsync(Sessions.User, 1, Ct));
 
         _films.VerifyNoOtherCalls();
@@ -35,8 +35,8 @@ public sealed class FilmServiceTests
     public async Task Add_StoresTheParsedFilmWithAllCopiesOnTheShelf()
     {
         Film? stored = null;
-        _films.Setup(f => f.AddAsync(Sessions.Admin.UserId, It.IsAny<Film>(), It.IsAny<CancellationToken>()))
-            .Callback<int, Film, CancellationToken>((_, film, _) => stored = film)
+        _films.Setup(f => f.AddAsync(Sessions.Admin.Actor, It.IsAny<Film>(), It.IsAny<CancellationToken>()))
+            .Callback<Actor, Film, CancellationToken>((_, film, _) => stored = film)
             .ReturnsAsync(4);
 
         var id = await Service().AddAsync(Sessions.Admin, Valid with { Title = "  Sisli Liman  " }, Ct);
@@ -100,9 +100,27 @@ public sealed class FilmServiceTests
     [Fact]
     public async Task Add_WithoutImage_IsAllowed()
     {
-        _films.Setup(f => f.AddAsync(Sessions.Admin.UserId, It.Is<Film>(film => film.ImageUrl == null), It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        _films.Setup(f => f.AddAsync(Sessions.Admin.Actor, It.Is<Film>(film => film.ImageUrl == null), It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         await Service().AddAsync(Sessions.Admin, Valid with { ImageUrl = "  " }, Ct);
+    }
+
+    /// <summary>
+    /// The version the form loaded goes to the repository with the film; when the film changed or
+    /// disappeared since, the refusal is marked stale so the form loads it again.
+    /// </summary>
+    [Theory]
+    [InlineData(FilmUpdateOutcome.ChangedElsewhere, FilmService.ChangedElsewhere)]
+    [InlineData(FilmUpdateOutcome.NotFound, FilmService.NotFound)]
+    public async Task Update_ChangedOrDeletedSinceLoaded_IsRefusedAsStale(FilmUpdateOutcome outcome, string message)
+    {
+        _films.Setup(f => f.UpdateAsync(Sessions.Admin.Actor, It.Is<Film>(film => film.Id == 3 && film.Version == 7), It.IsAny<CancellationToken>())).ReturnsAsync(outcome);
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 3, 7, Valid, Ct));
+
+        Assert.Equal(message, error.Message);
+        Assert.True(error.IsStale);
+        Assert.Empty(_audit.Entries);
     }
 
     [Theory]
@@ -110,9 +128,9 @@ public sealed class FilmServiceTests
     [InlineData(FilmUpdateOutcome.NotFound, FilmService.NotFound)]
     public async Task Update_RefusedByTheRepository_BecomesARuleMessage(FilmUpdateOutcome outcome, string message)
     {
-        _films.Setup(f => f.UpdateAsync(Sessions.Admin.UserId, It.Is<Film>(film => film.Id == 3), It.IsAny<CancellationToken>())).ReturnsAsync(outcome);
+        _films.Setup(f => f.UpdateAsync(Sessions.Admin.Actor, It.Is<Film>(film => film.Id == 3), It.IsAny<CancellationToken>())).ReturnsAsync(outcome);
 
-        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 3, Valid, Ct));
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 3, 1, Valid, Ct));
 
         Assert.Equal(message, error.Message);
         Assert.Empty(_audit.Entries);
@@ -123,40 +141,83 @@ public sealed class FilmServiceTests
     public async Task Update_LegacyFilmWithoutAbout_CanBeListed()
     {
         Film? stored = null;
-        _films.Setup(f => f.UpdateAsync(Sessions.Admin.UserId, It.Is<Film>(film => film.Id == 9), It.IsAny<CancellationToken>()))
-            .Callback<int, Film, CancellationToken>((_, film, _) => stored = film)
+        _films.Setup(f => f.UpdateAsync(Sessions.Admin.Actor, It.Is<Film>(film => film.Id == 9), It.IsAny<CancellationToken>()))
+            .Callback<Actor, Film, CancellationToken>((_, film, _) => stored = film)
             .ReturnsAsync(FilmUpdateOutcome.Updated);
 
-        await Service().UpdateAsync(Sessions.Admin, 9, Valid with { About = "  ", IsListed = true }, Ct);
+        await Service().UpdateAsync(Sessions.Admin, 9, 1, Valid with { About = "  ", IsListed = true }, Ct);
 
         Assert.NotNull(stored);
         Assert.Null(stored.About);
         Assert.True(stored.IsListed);
-        var tooLong = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 9, Valid with { About = new string('a', 4001) }, Ct));
+        var tooLong = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 9, 1, Valid with { About = new string('a', 4001) }, Ct));
         Assert.Equal([nameof(FilmInput.About)], tooLong.FieldErrors.Keys);
     }
 
     [Fact]
     public async Task Delete_FilmWithRentals_IsRefused()
     {
-        _films.Setup(f => f.DeleteAsync(Sessions.Admin.UserId, 3, It.IsAny<CancellationToken>())).ReturnsAsync(FilmDeleteOutcome.HasRentals);
+        _films.Setup(f => f.DeleteAsync(Sessions.Admin.Actor, 3, It.IsAny<CancellationToken>())).ReturnsAsync(FilmDeleteOutcome.HasRentals);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().DeleteAsync(Sessions.Admin, 3, Ct));
 
         Assert.Equal(FilmService.HasRentals, error.Message);
     }
 
+    /// <summary>
+    /// Whether an unlisted film may be seen is the repository's decision, made with the stored role: the
+    /// service passes the session's actor and treats no film as missing, also for a session that says admin.
+    /// </summary>
     [Fact]
-    public async Task Get_UnlistedFilm_IsMissingForAUserButVisibleToAnAdmin()
+    public async Task Get_FilmTheRepositoryDoesNotFind_IsMissingWhateverTheSessionSays()
     {
         var hidden = new Film { Id = 3, Title = "Gizli", IsListed = false };
-        _films.Setup(f => f.FindAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(hidden);
+        _films.Setup(f => f.FindAsync(Sessions.User.Actor, 3, It.IsAny<CancellationToken>())).ReturnsAsync((Film?)null);
+        _films.Setup(f => f.FindAsync(Sessions.Admin.Actor, 3, It.IsAny<CancellationToken>())).ReturnsAsync(hidden);
+        _films.Setup(f => f.FindAsync(Sessions.Admin.Actor, 4, It.IsAny<CancellationToken>())).ReturnsAsync((Film?)null);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().GetAsync(Sessions.User, 3, Ct));
 
         Assert.Equal(FilmService.NotFound, error.Message);
         Assert.Same(hidden, await Service().GetAsync(Sessions.Admin, 3, Ct));
+        Assert.Equal(FilmService.NotFound, (await Assert.ThrowsAsync<BusinessRuleException>(() => Service().GetAsync(Sessions.Admin, 4, Ct))).Message);
     }
 
-    private FilmService Service() => new(_films.Object, _time, _audit, TestValidators.Film, new Validation.CatalogQueryValidator());
+    [Fact]
+    public async Task Get_RevokedSession_IsToldToSignInAgain()
+    {
+        _films.Setup(f => f.FindAsync(Sessions.Admin.Actor, 3, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
+
+        var error = await Assert.ThrowsAsync<AccessDeniedException>(() => Service().GetAsync(Sessions.Admin, 3, Ct));
+
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, error.Message);
+    }
+
+    /// <summary>
+    /// The newest year a film may have is the current year by the database's clock (in this computer's
+    /// time zone): a computer whose clock is years behind still accepts this year's film, and one whose
+    /// clock is ahead accepts no film from the future.
+    /// </summary>
+    [Fact]
+    public async Task FilmYear_IsCheckedAgainstTheDatabaseClock()
+    {
+        var database = new TimeProviderClock(_time);
+        _films.Setup(f => f.AddAsync(Sessions.Admin.Actor, It.Is<Film>(film => film.Year == 2026), It.IsAny<CancellationToken>())).ReturnsAsync(5);
+        _films.Setup(f => f.UpdateAsync(Sessions.Admin.Actor, It.Is<Film>(film => film.Year == 2026), It.IsAny<CancellationToken>())).ReturnsAsync(FilmUpdateOutcome.Updated);
+        var behind = Service(new FakeTimeProvider(new DateTimeOffset(2024, 6, 1, 12, 0, 0, TimeSpan.Zero)), database);
+        var ahead = Service(new FakeTimeProvider(new DateTimeOffset(2030, 6, 1, 12, 0, 0, TimeSpan.Zero)), database);
+
+        Assert.Equal(5, await behind.AddAsync(Sessions.Admin, Valid with { Year = "2026" }, Ct));
+        await behind.UpdateAsync(Sessions.Admin, 3, 1, Valid with { Year = "2026" }, Ct);
+        var future = await Assert.ThrowsAsync<BusinessRuleException>(() => ahead.AddAsync(Sessions.Admin, Valid with { Year = "2028" }, Ct));
+        var futureChange = await Assert.ThrowsAsync<BusinessRuleException>(() => ahead.UpdateAsync(Sessions.Admin, 3, 1, Valid with { Year = "2028" }, Ct));
+
+        Assert.Equal(Validation.FilmFieldsValidator.YearInvalid(2026), future.FieldErrors[nameof(FilmInput.Year)]);
+        Assert.Equal(Validation.FilmFieldsValidator.YearInvalid(2026), futureChange.FieldErrors[nameof(FilmInput.Year)]);
+    }
+
+    private FilmService Service() => Service(_time, new TimeProviderClock(_time));
+
+    private FilmService Service(TimeProvider computer, IClock database) =>
+        new(_films.Object, computer, database, _audit, TestValidators.Film, new Validation.CatalogQueryValidator());
 }

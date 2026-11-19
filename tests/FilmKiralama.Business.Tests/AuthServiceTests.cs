@@ -48,13 +48,14 @@ public sealed class AuthServiceTests
         var hash = _hasher.Hash(Password);
         var messages = new List<string>();
 
+        _users.Setup(u => u.RecordFailedLoginAsync(It.IsAny<FailedSignIn>(), LoginPolicy.MaxFailedAttempts, TimeSpan.FromMinutes(15), Now, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
         // Unknown account.
         _users.Setup(u => u.FindByUserNameAsync("kimse", It.IsAny<CancellationToken>())).ReturnsAsync((AccountCredentials?)null);
         messages.Add((await Assert.ThrowsAsync<BusinessRuleException>(() => Service().SignInAsync("kimse", Password, Ct))).Message);
 
         // Wrong password.
         Setup(Account(hash));
-        _users.Setup(u => u.RecordFailedLoginAsync(7, LoginPolicy.MaxFailedAttempts, Now.AddMinutes(15), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         messages.Add((await Assert.ThrowsAsync<BusinessRuleException>(() => Service().SignInAsync(UserName, "Yanlis.Sifre1", Ct))).Message);
 
         // Locked account, even with the right password.
@@ -78,21 +79,29 @@ public sealed class AuthServiceTests
     public async Task SignIn_WrongPassword_CountsTheFailureWithAFifteenMinuteLock()
     {
         Setup(Account(_hasher.Hash(Password)));
-        _users.Setup(u => u.RecordFailedLoginAsync(7, 5, Now.AddMinutes(15), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _users.Setup(u => u.RecordFailedLoginAsync(It.Is<FailedSignIn>(f => f.UserName == UserName && f.SessionVersion == 0), 5, TimeSpan.FromMinutes(15), Now, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         await Assert.ThrowsAsync<BusinessRuleException>(() => Service().SignInAsync(UserName, "Yanlis.Sifre1", Ct));
 
-        _users.Verify(u => u.RecordFailedLoginAsync(7, 5, Now.AddMinutes(15), It.IsAny<CancellationToken>()), Times.Once);
+        _users.Verify(u => u.RecordFailedLoginAsync(It.Is<FailedSignIn>(f => f.UserName == UserName && f.SessionVersion == 0), 5, TimeSpan.FromMinutes(15), Now, It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// A locked account is refused before its password is checked, and only the conditional failure write
+    /// follows (the same one every refusal makes); while the lock is in force it matches no row, so the
+    /// lock neither grows nor ends early. Nothing records a success.
+    /// </summary>
     [Fact]
-    public async Task SignIn_LockedAccount_WritesNothing()
+    public async Task SignIn_LockedAccount_WritesOnlyTheConditionalFailure()
     {
-        Setup(Account(_hasher.Hash(Password), lockoutEnd: Now.AddSeconds(1)));
+        var account = Account(_hasher.Hash(Password), lockoutEnd: Now.AddSeconds(1));
+        Setup(account);
+        _users.Setup(u => u.RecordFailedLoginAsync(FailedSignIn.For(account), 5, TimeSpan.FromMinutes(15), Now, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         await Assert.ThrowsAsync<BusinessRuleException>(() => Service().SignInAsync(UserName, Password, Ct));
 
         _users.Verify(u => u.FindByUserNameAsync(UserName, It.IsAny<CancellationToken>()), Times.Once);
+        _users.Verify(u => u.RecordFailedLoginAsync(FailedSignIn.For(account), 5, TimeSpan.FromMinutes(15), Now, It.IsAny<CancellationToken>()), Times.Once);
         _users.VerifyNoOtherCalls();
     }
 
@@ -173,7 +182,7 @@ public sealed class AuthServiceTests
         User? stored = null;
         _users.Setup(u => u.FindTakenAsync("yeni", "a@example.com", "5551234567", null, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
         _users.Setup(u => u.AddAsync(It.IsAny<User>(), null, It.IsAny<CancellationToken>()))
-            .Callback<User, int?, CancellationToken>((user, _, _) => stored = user)
+            .Callback<User, Actor?, CancellationToken>((user, _, _) => stored = user)
             .ReturnsAsync(9);
 
         await Service().RegisterAsync(" yeni ", Password, " a@example.com ", "555 123 4567", Ct);
@@ -204,10 +213,10 @@ public sealed class AuthServiceTests
     {
         var account = Account(_hasher.Hash(Password));
         _users.Setup(u => u.FindByIdAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(account);
-        _users.Setup(u => u.RecordFailedLoginAsync(7, 5, Now.AddMinutes(15), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _users.Setup(u => u.RecordFailedLoginAsync(It.Is<FailedSignIn>(f => f.UserName == UserName && f.SessionVersion == 0), 5, TimeSpan.FromMinutes(15), Now, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User), "Yanlis.Sifre1", "Yeni.Sifre12", "Yeni.Sifre12", Ct));
+            () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User, sessionVersion: 0), "Yanlis.Sifre1", "Yeni.Sifre12", "Yeni.Sifre12", Ct));
 
         Assert.Equal(AuthService.CurrentPasswordWrong, error.Message);
         _users.Verify(u => u.ChangePasswordAsync(It.IsAny<AccountCredentials>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -222,11 +231,31 @@ public sealed class AuthServiceTests
         _users.Setup(u => u.FindByIdAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(account);
         _users.Setup(u => u.ChangePasswordAsync(account, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Callback<AccountCredentials, string, CancellationToken>((_, hash, _) => stored = hash)
-            .ReturnsAsync(true);
+            .ReturnsAsync(1);
+        var session = new UserSession(7, UserName, UserRole.User, sessionVersion: 0);
 
-        await Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User), Password, "Yeni.Sifre12", "Yeni.Sifre12", Ct);
+        await Service().ChangePasswordAsync(session, Password, "Yeni.Sifre12", "Yeni.Sifre12", Ct);
 
         Assert.Equal(PasswordVerificationResult.Success, _hasher.Verify("Yeni.Sifre12", stored!, PasswordFormat.Pbkdf2));
+        Assert.Equal(1, session.SessionVersion);
+    }
+
+    /// <summary>
+    /// A session whose account got a new password or role elsewhere cannot change the password either,
+    /// not even with the right current one; it is told to sign in again and nothing is counted or written.
+    /// </summary>
+    [Fact]
+    public async Task ChangePassword_RevokedSession_IsRefusedWithoutCheckingThePassword()
+    {
+        _users.Setup(u => u.FindByIdAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(Account(_hasher.Hash(Password)) with { SessionVersion = 3 });
+
+        var error = await Assert.ThrowsAsync<AccessDeniedException>(
+            () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User, sessionVersion: 2), Password, "Yeni.Sifre12", "Yeni.Sifre12", Ct));
+
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, error.Message);
+        _users.Verify(u => u.FindByIdAsync(7, It.IsAny<CancellationToken>()), Times.Once);
+        _users.VerifyNoOtherCalls();
+        Assert.Equal(["access.session_revoked user"], _audit.Entries);
     }
 
     [Theory]
@@ -236,7 +265,7 @@ public sealed class AuthServiceTests
     public async Task ChangePassword_InvalidInput_IsRejectedWithoutTouchingTheRepository(string current, string next, string repeat, string? message)
     {
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User), current, next, repeat, Ct));
+            () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User, sessionVersion: 0), current, next, repeat, Ct));
 
         Assert.Equal(message ?? AccountRules.PasswordInvalid, error.Message);
         _users.VerifyNoOtherCalls();
@@ -251,9 +280,10 @@ public sealed class AuthServiceTests
     {
         var shared = new FakeTimeProvider(new DateTimeOffset(Now));
         var hash = _hasher.Hash(Password);
-        var locked = new AccountCredentials(4, UserName, UserRole.User, hash, PasswordFormat.Pbkdf2, 0, Now.AddMinutes(15));
+        var locked = new AccountCredentials(4, UserName, UserRole.User, hash, PasswordFormat.Pbkdf2, 0, Now.AddMinutes(15), SessionVersion: 0);
         _users.Setup(u => u.FindByUserNameAsync(UserName, It.IsAny<CancellationToken>())).ReturnsAsync(locked);
         _users.Setup(u => u.RecordSuccessfulLoginAsync(locked, It.IsAny<DateTime>(), null, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _users.Setup(u => u.RecordFailedLoginAsync(FailedSignIn.For(locked), It.IsAny<int>(), It.IsAny<TimeSpan>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         var service = new AuthService(_users.Object, _hasher, new TimeProviderClock(shared), _audit, TestValidators.SignIn, TestValidators.SignUp, TestValidators.PasswordChange);
 
         _time.Advance(TimeSpan.FromDays(1));
@@ -265,27 +295,89 @@ public sealed class AuthServiceTests
     }
 
     /// <summary>
-    /// An unknown and a known user name both read the database's clock once, before the account is
-    /// looked up, so the round trip to the clock does not make the known name slower to refuse.
+    /// Every sign-in that reaches the database makes the same calls in the same order, whatever the
+    /// outcome: the database's clock, the lookup by name, one password check (real or simulated) and one
+    /// write of the outcome. An unknown name, a wrong password and a locked account all end with the same
+    /// failure write (which matches no row, or counts, as the database decides), so the number of round
+    /// trips does not tell an existing account from a missing one.
     /// </summary>
     [Fact]
-    public async Task SignIn_KnownAndUnknownNames_ReadTheClockOnceBeforeTheLookup()
+    public async Task SignIn_EveryOutcome_MakesTheSameCallsInTheSameOrder()
     {
         var steps = new List<string>();
+        var failures = new List<FailedSignIn>();
         var clock = new Mock<IClock>(MockBehavior.Strict);
         clock.Setup(c => c.GetUtcNowAsync(It.IsAny<CancellationToken>())).Callback(() => steps.Add("clock")).ReturnsAsync(Now);
+        var hasher = new Mock<IPasswordHasher>(MockBehavior.Strict);
+        hasher.Setup(h => h.Verify(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<PasswordFormat>()))
+            .Callback(() => steps.Add("password"))
+            .Returns<string, string, PasswordFormat>((password, stored, format) => _hasher.Verify(password, stored, format));
+        hasher.Setup(h => h.SimulateVerification(It.IsAny<string>())).Callback(() => steps.Add("password"));
+        var hash = _hasher.Hash(Password);
+        var locked = new AccountCredentials(8, "kilitli", UserRole.User, hash, PasswordFormat.Pbkdf2, 0, Now.AddMinutes(5), SessionVersion: 2);
         _users.Setup(u => u.FindByUserNameAsync("kimse", It.IsAny<CancellationToken>())).Callback(() => steps.Add("lookup")).ReturnsAsync((AccountCredentials?)null);
-        _users.Setup(u => u.FindByUserNameAsync(UserName, It.IsAny<CancellationToken>())).Callback(() => steps.Add("lookup")).ReturnsAsync(Account(_hasher.Hash(Password)));
-        _users.Setup(u => u.RecordFailedLoginAsync(7, LoginPolicy.MaxFailedAttempts, Now.AddMinutes(15), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-        var service = new AuthService(_users.Object, _hasher, clock.Object, _audit, TestValidators.SignIn, TestValidators.SignUp, TestValidators.PasswordChange);
+        _users.Setup(u => u.FindByUserNameAsync(UserName, It.IsAny<CancellationToken>())).Callback(() => steps.Add("lookup")).ReturnsAsync(Account(hash));
+        _users.Setup(u => u.FindByUserNameAsync("kilitli", It.IsAny<CancellationToken>())).Callback(() => steps.Add("lookup")).ReturnsAsync(locked);
+        _users.Setup(u => u.RecordFailedLoginAsync(It.IsAny<FailedSignIn>(), LoginPolicy.MaxFailedAttempts, LoginPolicy.LockoutDuration, Now, It.IsAny<CancellationToken>()))
+            .Callback<FailedSignIn, int, TimeSpan, DateTime, CancellationToken>((failure, _, _, _, _) => { steps.Add("record failure"); failures.Add(failure); })
+            .Returns(Task.CompletedTask);
+        _users.Setup(u => u.RecordSuccessfulLoginAsync(It.IsAny<AccountCredentials>(), Now, null, It.IsAny<CancellationToken>()))
+            .Callback(() => steps.Add("record success"))
+            .ReturnsAsync(true);
+        var service = new AuthService(_users.Object, hasher.Object, clock.Object, _audit, TestValidators.SignIn, TestValidators.SignUp, TestValidators.PasswordChange);
 
-        await Assert.ThrowsAsync<BusinessRuleException>(() => service.SignInAsync("kimse", Password, Ct));
-        var unknown = steps.ToList();
-        steps.Clear();
-        await Assert.ThrowsAsync<BusinessRuleException>(() => service.SignInAsync(UserName, "Yanlis.Sifre1", Ct));
+        async Task<List<string>> RunAsync(string name, string password, bool succeeds)
+        {
+            steps.Clear();
+            if (succeeds)
+            {
+                await service.SignInAsync(name, password, Ct);
+            }
+            else
+            {
+                await Assert.ThrowsAsync<BusinessRuleException>(() => service.SignInAsync(name, password, Ct));
+            }
 
-        Assert.Equal(["clock", "lookup"], unknown);
-        Assert.Equal(unknown, steps);
+            return [.. steps];
+        }
+
+        var unknown = await RunAsync("kimse", Password, succeeds: false);
+        var wrong = await RunAsync(UserName, "Yanlis.Sifre1", succeeds: false);
+        var whileLocked = await RunAsync("kilitli", Password, succeeds: false);
+        var success = await RunAsync(UserName, Password, succeeds: true);
+
+        List<string> refused = ["clock", "lookup", "password", "record failure"];
+        Assert.Equal(refused, unknown);
+        Assert.Equal(refused, wrong);
+        Assert.Equal(refused, whileLocked);
+        Assert.Equal(["clock", "lookup", "password", "record success"], success);
+
+        // The unknown name's write can match no row; the others carry the credential that was checked.
+        Assert.Equal(("kimse", -1), (failures[0].UserName, failures[0].SessionVersion));
+        Assert.Equal((UserName, hash, 0), (failures[1].UserName, failures[1].PasswordHash, failures[1].SessionVersion));
+        Assert.Equal(("kilitli", 2), (failures[2].UserName, failures[2].SessionVersion));
+    }
+
+    /// <summary>
+    /// Every type that carries a session version needs it explicitly: a call site that forgot it would
+    /// otherwise pass 0, which every account whose role and password never changed accepts.
+    /// </summary>
+    [Theory]
+    [InlineData(typeof(UserSession))]
+    [InlineData(typeof(Actor))]
+    [InlineData(typeof(RentalActor))]
+    [InlineData(typeof(RentalRequest))]
+    [InlineData(typeof(AccountCredentials))]
+    [InlineData(typeof(FailedSignIn))]
+    public void SessionVersion_HasNoDefaultValue(Type type)
+    {
+        var parameters = type.GetConstructors(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)
+            .SelectMany(c => c.GetParameters())
+            .Where(p => string.Equals(p.Name, "sessionVersion", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        Assert.NotEmpty(parameters);
+        Assert.All(parameters, p => Assert.False(p.HasDefaultValue, $"{type.Name}({p.Name}) has a default value."));
     }
 
     private AuthService Service() =>
@@ -299,5 +391,5 @@ public sealed class AuthServiceTests
         PasswordFormat format = PasswordFormat.Pbkdf2,
         DateTime? lockoutEnd = null,
         UserRole role = UserRole.User) =>
-        new(7, UserName, role, hash, format, 0, lockoutEnd);
+        new(7, UserName, role, hash, format, 0, lockoutEnd, SessionVersion: 0);
 }

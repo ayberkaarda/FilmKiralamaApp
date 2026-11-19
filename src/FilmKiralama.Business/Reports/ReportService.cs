@@ -79,7 +79,7 @@ internal sealed class ReportService(
     {
         Access.RequireAdmin(session, audit);
         Check(range);
-        return audit.AsActorAsync(session, () => reports.GetMostRentedAsync(session.UserId, range.From, range.To, ReportPolicy.TopFilms, cancellationToken));
+        return audit.AsActorAsync(session, () => reports.GetMostRentedAsync(session.Actor, range.From, range.To, ReportPolicy.TopFilms, cancellationToken));
     }
 
     public async Task<IReadOnlyList<OverdueReportRow>> GetOverdueAsync(UserSession session, CancellationToken cancellationToken = default) =>
@@ -89,7 +89,7 @@ internal sealed class ReportService(
     {
         Access.RequireAdmin(session, audit);
         Check(range);
-        var rows = await audit.AsActorAsync(session, () => reports.GetLateFeesAsync(session.UserId, range.From, range.To, cancellationToken)).ConfigureAwait(false);
+        var rows = await audit.AsActorAsync(session, () => reports.GetLateFeesAsync(session.Actor, range.From, range.To, cancellationToken)).ConfigureAwait(false);
         return new LateFeeReport(rows, rows.Sum(r => r.LateFee));
     }
 
@@ -142,7 +142,7 @@ internal sealed class ReportService(
     {
         Access.RequireAdmin(session, audit);
         var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
-        var rows = await audit.AsActorAsync(session, () => reports.GetOverdueAsync(session.UserId, today, cancellationToken)).ConfigureAwait(false);
+        var rows = await audit.AsActorAsync(session, () => reports.GetOverdueAsync(session.Actor, today, cancellationToken)).ConfigureAwait(false);
         return (today,
         [
             .. rows.Select(r =>

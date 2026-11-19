@@ -9,45 +9,51 @@ public interface IUserRepository
 
     Task<AccountCredentials?> FindByIdAsync(int userId, CancellationToken cancellationToken = default);
 
-    /// <summary>Every account, ordered by id, without passwords, for the admin <paramref name="adminId"/>.</summary>
-    /// <exception cref="ActorRevokedException"><paramref name="adminId"/> is no longer a stored admin.</exception>
-    Task<IReadOnlyList<UserSummary>> GetAllAsync(int adminId, CancellationToken cancellationToken = default);
+    /// <summary>Every account, ordered by id, without passwords, for the admin <paramref name="actor"/>.</summary>
+    /// <exception cref="ActorRevokedException"><paramref name="actor"/> is no longer a stored admin, or its session was revoked.</exception>
+    Task<IReadOnlyList<UserSummary>> GetAllAsync(Actor actor, CancellationToken cancellationToken = default);
 
     /// <summary>Which of the given values another account (not <paramref name="exceptUserId"/>) already uses.</summary>
     Task<AccountFields> FindTakenAsync(string userName, string? email, string? phone, int? exceptUserId = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Stores a new account and returns its id. With <paramref name="adminId"/> set (an admin adds the
+    /// Stores a new account and returns its id. With <paramref name="actor"/> set (an admin adds the
     /// account) that admin must still be a stored admin when the account is written; without it the
     /// account registers itself.
     /// </summary>
     /// <exception cref="DuplicateAccountException">The user name, e-mail or phone is taken.</exception>
-    /// <exception cref="ActorRevokedException"><paramref name="adminId"/> is no longer a stored admin.</exception>
-    Task<int> AddAsync(User user, int? adminId, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException"><paramref name="actor"/> is no longer a stored admin, or its session was revoked.</exception>
+    Task<int> AddAsync(User user, Actor? actor, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Changes an account's name, contact data and role and, when <see cref="AccountUpdate.NewPasswordHash"/>
-    /// is set, its password. The last admin cannot lose the admin role: the check and the write are one
+    /// is set, its password. A new password, or a role different from the stored one, raises the account's
+    /// session version in the same statement, which ends every session issued before. The last admin
+    /// cannot lose the admin role, and an account whose session version is no longer
+    /// <see cref="AccountUpdate.ExpectedVersion"/> (another admin changed its role or password since the
+    /// form loaded it) is not changed: the checks and the write are one
     /// conditional UPDATE, so two concurrent demotions cannot both succeed. The change is made by the
-    /// admin <paramref name="adminId"/>, whose stored role is checked first under the same lock, so a
+    /// admin <paramref name="actor"/>, whose stored role is checked first under the same lock, so a
     /// demoted admin can neither change accounts nor take the role back.
     /// </summary>
     /// <exception cref="DuplicateAccountException">The user name, e-mail or phone is taken.</exception>
-    /// <exception cref="ActorRevokedException"><paramref name="adminId"/> is no longer a stored admin.</exception>
-    Task<AccountUpdateOutcome> UpdateAsync(int adminId, AccountUpdate update, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException"><paramref name="actor"/> is no longer a stored admin, or its session was revoked.</exception>
+    Task<AccountUpdateOutcome> UpdateAsync(Actor actor, AccountUpdate update, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Deletes, for the admin <paramref name="adminId"/>, an account that is no admin and has no rentals,
+    /// Deletes, for the admin <paramref name="actor"/>, an account that is no admin and has no rentals,
     /// in one conditional DELETE.
     /// </summary>
-    /// <exception cref="ActorRevokedException"><paramref name="adminId"/> is no longer a stored admin.</exception>
-    Task<AccountDeleteOutcome> DeleteAsync(int adminId, int userId, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException"><paramref name="actor"/> is no longer a stored admin, or its session was revoked.</exception>
+    Task<AccountDeleteOutcome> DeleteAsync(Actor actor, int userId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Replaces the password of <paramref name="verified"/> with <paramref name="newPasswordHash"/>, only
-    /// while the stored password is still the one that was verified.
+    /// while the stored password and session version are still the ones that were verified, and raises
+    /// the session version by one in the same statement, which ends every other session of the account.
     /// </summary>
-    Task<bool> ChangePasswordAsync(AccountCredentials verified, string newPasswordHash, CancellationToken cancellationToken = default);
+    /// <returns>The new session version, or <see langword="null"/> when the account changed meanwhile and nothing was written.</returns>
+    Task<int?> ChangePasswordAsync(AccountCredentials verified, string newPasswordHash, CancellationToken cancellationToken = default);
 
     /// <summary>Whether any account has the admin role.</summary>
     Task<bool> AnyAdminAsync(CancellationToken cancellationToken = default);
@@ -72,10 +78,15 @@ public interface IUserRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Counts a failed sign-in atomically. When the count reaches <paramref name="maxAttempts"/> the
-    /// account is locked until <paramref name="lockoutEnd"/> and the count starts again from zero.
+    /// Counts a failed sign-in in one conditional UPDATE. It counts only while the account is not locked
+    /// and still has the password value, format and session version of <paramref name="attempt"/>; a
+    /// failure that arrives after a concurrent failure locked the account, or after the password was
+    /// replaced, counts nothing. When the count reaches <paramref name="maxAttempts"/> the account is
+    /// locked for <paramref name="lockoutDuration"/> and the count starts again from zero. On SQL Server
+    /// both the lock check and the lock's end use the database's clock at the moment of the UPDATE;
+    /// providers without one (the tests' SQLite) use <paramref name="now"/>.
     /// </summary>
-    Task RecordFailedLoginAsync(int userId, int maxAttempts, DateTime lockoutEnd, CancellationToken cancellationToken = default);
+    Task RecordFailedLoginAsync(FailedSignIn attempt, int maxAttempts, TimeSpan lockoutDuration, DateTime now, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Records a successful sign-in in one conditional UPDATE: only while the account is not locked at
@@ -105,8 +116,11 @@ public enum AccountFields
     Phone = 4,
 }
 
-/// <summary>An admin's change of an account.</summary>
-public sealed record AccountUpdate(int UserId, string UserName, string? Email, string? Phone, UserRole Role, string? NewPasswordHash);
+/// <summary>
+/// An admin's change of an account, made from a form that loaded the account at session version
+/// <see cref="ExpectedVersion"/>.
+/// </summary>
+public sealed record AccountUpdate(int UserId, int ExpectedVersion, string UserName, string? Email, string? Phone, UserRole Role, string? NewPasswordHash);
 
 public enum AccountUpdateOutcome
 {
@@ -115,6 +129,11 @@ public enum AccountUpdateOutcome
 
     /// <summary>The account is the only admin and would lose the role; nothing was written.</summary>
     LastAdmin = 2,
+
+    /// <summary>
+    /// Another admin changed the account's role or password since the form loaded it; nothing was written.
+    /// </summary>
+    ChangedElsewhere = 3,
 }
 
 public enum AccountDeleteOutcome

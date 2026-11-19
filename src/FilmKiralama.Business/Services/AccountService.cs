@@ -19,10 +19,15 @@ public interface IAccountService
     Task<int> AddAsync(UserSession session, AccountInput input, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Changes an account; the last admin keeps the admin role. E-mail and phone may be empty (accounts
-    /// kept from the original application have none) and are checked only when given.
+    /// Changes an account loaded at <paramref name="expectedVersion"/> (<see cref="UserSummary.Version"/>);
+    /// the last admin keeps the admin role. E-mail and phone may be empty (accounts kept from the original
+    /// application have none) and are checked only when given.
     /// </summary>
-    Task UpdateAsync(UserSession session, int userId, AccountInput input, CancellationToken cancellationToken = default);
+    /// <exception cref="BusinessRuleException">
+    /// The input is invalid, or (with <see cref="BusinessRuleException.IsStale"/>) another admin changed the
+    /// account's role or password, or deleted it, since it was loaded.
+    /// </exception>
+    Task UpdateAsync(UserSession session, int userId, int expectedVersion, AccountInput input, CancellationToken cancellationToken = default);
 
     /// <summary>Deletes an account that is no admin and has no rentals.</summary>
     Task DeleteAsync(UserSession session, int userId, CancellationToken cancellationToken = default);
@@ -39,11 +44,12 @@ internal sealed class AccountService(
     internal const string LastAdmin = "Sistemde en az bir yönetici kalmalıdır; son yöneticinin rolü değiştirilemez.";
     internal const string AdminNotDeletable = "Yönetici rolündeki kullanıcılar silinemez.";
     internal const string HasRentals = "Kiralama geçmişi olan kullanıcı silinemez.";
+    internal const string ChangedElsewhere = "Kullanıcının rolü veya şifresi siz düzenlerken başka biri tarafından değiştirildi. Güncel hali yüklendi; lütfen değişikliğinizi yeniden yapın.";
 
     public Task<IReadOnlyList<UserSummary>> GetAllAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
-        return audit.AsActorAsync(session, () => users.GetAllAsync(session.UserId, cancellationToken));
+        return audit.AsActorAsync(session, () => users.GetAllAsync(session.Actor, cancellationToken));
     }
 
     public async Task<int> AddAsync(UserSession session, AccountInput input, CancellationToken cancellationToken = default)
@@ -67,7 +73,7 @@ internal sealed class AccountService(
                 Email = email,
                 Phone = phone,
             };
-            var id = await audit.AsActorAsync(session, () => users.AddAsync(user, session.UserId, cancellationToken)).ConfigureAwait(false);
+            var id = await audit.AsActorAsync(session, () => users.AddAsync(user, session.Actor, cancellationToken)).ConfigureAwait(false);
             audit.Record(AuditEvent.AccountChanged, AuditRole.Admin);
             return id;
         }
@@ -77,7 +83,7 @@ internal sealed class AccountService(
         }
     }
 
-    public async Task UpdateAsync(UserSession session, int userId, AccountInput input, CancellationToken cancellationToken = default)
+    public async Task UpdateAsync(UserSession session, int userId, int expectedVersion, AccountInput input, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
         ArgumentNullException.ThrowIfNull(input);
@@ -92,8 +98,8 @@ internal sealed class AccountService(
         AccountUpdateOutcome outcome;
         try
         {
-            var update = new AccountUpdate(userId, name, email, phone, input.Role, newHash);
-            outcome = await audit.AsActorAsync(session, () => users.UpdateAsync(session.UserId, update, cancellationToken)).ConfigureAwait(false);
+            var update = new AccountUpdate(userId, expectedVersion, name, email, phone, input.Role, newHash);
+            outcome = await audit.AsActorAsync(session, () => users.UpdateAsync(session.Actor, update, cancellationToken)).ConfigureAwait(false);
         }
         catch (DuplicateAccountException ex)
         {
@@ -107,15 +113,17 @@ internal sealed class AccountService(
                 return;
             case AccountUpdateOutcome.LastAdmin:
                 throw new BusinessRuleException(LastAdmin);
+            case AccountUpdateOutcome.ChangedElsewhere:
+                throw BusinessRuleException.Stale(ChangedElsewhere);
             default:
-                throw new BusinessRuleException(NotFound);
+                throw BusinessRuleException.Stale(NotFound);
         }
     }
 
     public async Task DeleteAsync(UserSession session, int userId, CancellationToken cancellationToken = default)
     {
         Access.RequireAdmin(session, audit);
-        var outcome = await audit.AsActorAsync(session, () => users.DeleteAsync(session.UserId, userId, cancellationToken)).ConfigureAwait(false);
+        var outcome = await audit.AsActorAsync(session, () => users.DeleteAsync(session.Actor, userId, cancellationToken)).ConfigureAwait(false);
         switch (outcome)
         {
             case AccountDeleteOutcome.Deleted:

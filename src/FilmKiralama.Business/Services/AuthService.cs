@@ -66,33 +66,36 @@ internal sealed class AuthService(
         var name = input.UserName;
         password = input.Password!;
 
-        // The database's clock: a computer whose clock is ahead cannot end a lock early, nor one whose
-        // clock is behind make a lock last longer. It is read before the lookup, for every name, so the
-        // round trip does not make a known name slower to refuse than an unknown one.
+        // Every sign-in that gets this far makes the same calls in the same order: the database's clock,
+        // the lookup, one password check (real or simulated) and one write of the outcome. A refusal always
+        // ends with the same conditional failure write, which counts or matches no row as the database
+        // decides, so the number of round trips does not tell a known name from an unknown one. The
+        // database's clock also means a computer whose clock is wrong can neither end a lock early nor
+        // make it last longer.
         var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
         var account = await users.FindByUserNameAsync(name, cancellationToken).ConfigureAwait(false);
         if (account is null)
         {
             passwordHasher.SimulateVerification(password);
+            await RecordFailureAsync(FailedSignIn.ForUnknown(name), now, cancellationToken).ConfigureAwait(false);
             throw Refused();
         }
 
         if (account.LockoutEnd > now)
         {
-            // Same answer and about the same cost as a wrong password; nothing is written, so the lock
-            // neither grows nor ends early.
+            // Same answer and about the same cost as a wrong password. The failure write matches no row
+            // while the lock is in force, so the lock neither grows nor ends early.
             passwordHasher.SimulateVerification(password);
+            await RecordFailureAsync(FailedSignIn.For(account), now, cancellationToken).ConfigureAwait(false);
             throw Refused();
         }
 
         var result = passwordHasher.Verify(password, account.PasswordHash, account.PasswordFormat);
         if (result == PasswordVerificationResult.Failed)
         {
-            await users.RecordFailedLoginAsync(
-                account.Id,
-                LoginPolicy.MaxFailedAttempts,
-                now + LoginPolicy.LockoutDuration,
-                cancellationToken).ConfigureAwait(false);
+            // Counted only against the credential just checked, and only while no lock is in force when
+            // the failure is written (decided by the database).
+            await RecordFailureAsync(FailedSignIn.For(account), now, cancellationToken).ConfigureAwait(false);
             throw Refused();
         }
 
@@ -119,7 +122,7 @@ internal sealed class AuthService(
         }
 
         audit.Record(AuditEvent.SignInSucceeded, role);
-        return new UserSession(account.Id, account.UserName, account.Role);
+        return new UserSession(account.Id, account.UserName, account.Role, account.SessionVersion);
     }
 
     public async Task RegisterAsync(
@@ -178,8 +181,16 @@ internal sealed class AuthService(
 
         var role = AuditCodes.Of(session.Role);
         var account = await users.FindByIdAsync(session.UserId, cancellationToken).ConfigureAwait(false);
+        if (account is null || account.SessionVersion != session.SessionVersion)
+        {
+            // The account was deleted, or its password or role changed since this session began: the
+            // session has ended, also for changing the password.
+            audit.Record(AuditEvent.SessionRevoked, role);
+            throw new AccessDeniedException(AccessDeniedException.SessionRevokedMessage);
+        }
+
         var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
-        if (account is null || account.LockoutEnd > now || currentPassword.Length > PasswordPolicy.MaxLength)
+        if (account.LockoutEnd > now || currentPassword.Length > PasswordPolicy.MaxLength)
         {
             passwordHasher.SimulateVerification(currentPassword);
             audit.Record(AuditEvent.PasswordChangeRefused, role);
@@ -189,20 +200,26 @@ internal sealed class AuthService(
         if (passwordHasher.Verify(currentPassword, account.PasswordHash, account.PasswordFormat) == PasswordVerificationResult.Failed)
         {
             // Counted like a failed sign-in: an unattended session cannot be used to guess the password.
-            await users.RecordFailedLoginAsync(account.Id, LoginPolicy.MaxFailedAttempts, now + LoginPolicy.LockoutDuration, cancellationToken).ConfigureAwait(false);
+            await RecordFailureAsync(FailedSignIn.For(account), now, cancellationToken).ConfigureAwait(false);
             audit.Record(AuditEvent.PasswordChangeRefused, role);
             throw new BusinessRuleException(CurrentPasswordWrong);
         }
 
-        // Only the password that was just verified is replaced.
-        if (!await users.ChangePasswordAsync(account, passwordHasher.Hash(newPassword), cancellationToken).ConfigureAwait(false))
+        // Only the password that was just verified is replaced. The new session version ends every other
+        // session of the account; this one moves on to it.
+        if (await users.ChangePasswordAsync(account, passwordHasher.Hash(newPassword), cancellationToken).ConfigureAwait(false) is not { } version)
         {
             audit.Record(AuditEvent.PasswordChangeRefused, role);
             throw new BusinessRuleException(CurrentPasswordWrong);
         }
 
+        session.Renew(version);
         audit.Record(AuditEvent.PasswordChanged, role);
     }
+
+    /// <summary>The one failure write of every refused sign-in and of a wrong current password.</summary>
+    private Task RecordFailureAsync(FailedSignIn failure, DateTime now, CancellationToken cancellationToken) =>
+        users.RecordFailedLoginAsync(failure, LoginPolicy.MaxFailedAttempts, LoginPolicy.LockoutDuration, now, cancellationToken);
 
     /// <summary>
     /// The one audit code of every refused sign-in, without a role; the answer is

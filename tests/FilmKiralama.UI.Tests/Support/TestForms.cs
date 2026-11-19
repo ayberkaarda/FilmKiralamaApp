@@ -141,7 +141,7 @@ internal static class TestForms
     public static KullaniciYonetimPanel Accounts()
     {
         var accounts = new ControlledAccountService();
-        accounts.Accounts.Add(new UserSummary(3, LongUserName, LongUserName + "@example.com", "555 123 4567", UserRole.User));
+        accounts.Accounts.Add(new UserSummary(3, LongUserName, LongUserName + "@example.com", "555 123 4567", UserRole.User, 0));
         var form = new KullaniciYonetimPanel(accounts, Sessions.Admin) { Prompts = new RecordingPrompts() };
         Assert.True(form.LoadUsersAsync().IsCompletedSuccessfully);
         form.SelectUser(accounts.Accounts[2]);

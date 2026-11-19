@@ -76,6 +76,12 @@ namespace FilmKiralama.Data.Persistence.Migrations
                         .HasColumnType("int")
                         .HasColumnName("Adet");
 
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1)
+                        .HasColumnName("Surum");
+
                     b.Property<int>("Year")
                         .HasColumnType("int")
                         .HasColumnName("Yil");
@@ -94,6 +100,8 @@ namespace FilmKiralama.Data.Persistence.Migrations
                             t.HasCheckConstraint("CK_Filmler_Adet", "[Adet] >= 0 AND [MevcutAdet] >= 0 AND [MevcutAdet] <= [Adet]");
 
                             t.HasCheckConstraint("CK_Filmler_GunlukUcret", "[GunlukUcret] > 0");
+
+                            t.HasCheckConstraint("CK_Filmler_Surum", "[Surum] >= 1");
                         });
                 });
 
@@ -297,6 +305,12 @@ namespace FilmKiralama.Data.Persistence.Migrations
                         .HasColumnType("nvarchar(20)")
                         .HasColumnName("Rol");
 
+                    b.Property<int>("SessionVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("OturumSurumu");
+
                     b.Property<string>("UserName")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -320,6 +334,8 @@ namespace FilmKiralama.Data.Persistence.Migrations
                     b.ToTable("Kullanicilar", null, t =>
                         {
                             t.HasCheckConstraint("CK_Kullanicilar_BasarisizGiris", "[BasarisizGiris] >= 0");
+
+                            t.HasCheckConstraint("CK_Kullanicilar_OturumSurumu", "[OturumSurumu] >= 0");
 
                             t.HasCheckConstraint("CK_Kullanicilar_Rol", "[Rol] IN ('Kullanici', 'Admin')");
 

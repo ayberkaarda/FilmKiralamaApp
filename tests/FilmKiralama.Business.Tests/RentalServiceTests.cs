@@ -60,7 +60,7 @@ public sealed class RentalServiceTests
         var forged = new RentalQuote(3, 2, 10m, 0.01m, Today.AddDays(-30), Today.AddDays(-28));
         var receipt = await Service().RentAsync(Sessions.User, forged, Ct);
 
-        Assert.Equal(new RentalRequest(3, Sessions.User.UserId, Today, Today.AddDays(2), 10m, 20m), sent);
+        Assert.Equal(new RentalRequest(3, Sessions.User.UserId, Today, Today.AddDays(2), 10m, 20m, SessionVersion: 0), sent);
         Assert.Equal(11, receipt.RentalId);
         Assert.Equal(20m, receipt.Total);
         Assert.Equal(["rental.created user"], _audit.Entries);
@@ -83,7 +83,7 @@ public sealed class RentalServiceTests
     [Fact]
     public async Task Return_ByAUser_IsLimitedToTheirOwnRentals()
     {
-        _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false), Today, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
+        _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false, SessionVersion: 0), Today, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ReturnResult(ReturnOutcome.NotFound, null, 0m));
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().ReturnAsync(Sessions.User, 9, Ct));
@@ -96,7 +96,7 @@ public sealed class RentalServiceTests
     [Fact]
     public async Task Return_ByAnAdmin_HasNoOwnerFilter()
     {
-        _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: true), Today, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
+        _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: true, SessionVersion: 0), Today, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ReturnResult(ReturnOutcome.Returned, Today, 0m));
 
         var receipt = await Service().ReturnAsync(Sessions.Admin, 9, Ct);
@@ -108,7 +108,7 @@ public sealed class RentalServiceTests
     [Fact]
     public async Task Return_ByAnAccountThatIsGone_AsksToSignInAgain()
     {
-        _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: true), Today, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
+        _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: true, SessionVersion: 0), Today, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new ActorRevokedException());
         _rentals.Setup(r => r.RentAsync(It.IsAny<RentalRequest>(), It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
 
@@ -124,7 +124,7 @@ public sealed class RentalServiceTests
     public async Task Return_ComputesTheLateFeeFromTheDueDayReadUnderTheLock()
     {
         Func<DateOnly?, decimal>? feeOf = null;
-        _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false), Today, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
+        _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false, SessionVersion: 0), Today, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
             .Callback<int, RentalActor, DateOnly, Func<DateOnly?, decimal>, CancellationToken>((_, _, _, fee, _) => feeOf = fee)
             .ReturnsAsync(new ReturnResult(ReturnOutcome.Returned, Today.AddDays(-4), 30m));
 
@@ -151,7 +151,7 @@ public sealed class RentalServiceTests
         _rentals.Setup(r => r.RentAsync(It.IsAny<RentalRequest>(), It.IsAny<CancellationToken>()))
             .Callback<RentalRequest, CancellationToken>((request, _) => sent = request)
             .ReturnsAsync(new RentResult(RentOutcome.Rented, 11));
-        _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false), databaseDay, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
+        _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false, SessionVersion: 0), databaseDay, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ReturnResult(ReturnOutcome.Returned, Today, 22.5m));
 
         var receipt = await Service().RentAsync(Sessions.User, await Service().QuoteAsync(3, 10m, 2, Ct), Ct);
@@ -194,9 +194,9 @@ public sealed class RentalServiceTests
         await Assert.ThrowsAsync<AccessDeniedException>(() => Service().GetActiveRentalsAsync(Sessions.User, FilmFilter.None, Ct));
         _rentals.VerifyNoOtherCalls();
 
-        _rentals.Setup(r => r.GetActiveAsync(new RentalActor(Sessions.User.UserId, AsAdmin: false), FilmFilter.None, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _rentals.Setup(r => r.GetActiveAsync(new RentalActor(Sessions.User.UserId, AsAdmin: false, SessionVersion: 0), FilmFilter.None, It.IsAny<CancellationToken>())).ReturnsAsync([]);
         await Service().GetMyActiveRentalsAsync(Sessions.User, Ct);
-        _rentals.Verify(r => r.GetActiveAsync(new RentalActor(Sessions.User.UserId, AsAdmin: false), FilmFilter.None, It.IsAny<CancellationToken>()), Times.Once);
+        _rentals.Verify(r => r.GetActiveAsync(new RentalActor(Sessions.User.UserId, AsAdmin: false, SessionVersion: 0), FilmFilter.None, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Theory]

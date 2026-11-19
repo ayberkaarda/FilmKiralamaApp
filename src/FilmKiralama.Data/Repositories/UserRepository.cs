@@ -17,7 +17,7 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         return await db.Users
             .AsNoTracking()
             .Where(u => u.UserName == userName)
-            .Select(u => new AccountCredentials(u.Id, u.UserName, u.Role, u.PasswordHash, u.PasswordFormat, u.FailedLoginCount, u.LockoutEnd))
+            .Select(u => new AccountCredentials(u.Id, u.UserName, u.Role, u.PasswordHash, u.PasswordFormat, u.FailedLoginCount, u.LockoutEnd, u.SessionVersion))
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -28,19 +28,19 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         return await db.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => new AccountCredentials(u.Id, u.UserName, u.Role, u.PasswordHash, u.PasswordFormat, u.FailedLoginCount, u.LockoutEnd))
+            .Select(u => new AccountCredentials(u.Id, u.UserName, u.Role, u.PasswordHash, u.PasswordFormat, u.FailedLoginCount, u.LockoutEnd, u.SessionVersion))
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<IReadOnlyList<UserSummary>> GetAllAsync(int adminId, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<UserSummary>> GetAllAsync(Actor actor, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor, admin: true, cancellationToken).ConfigureAwait(false);
         return await db.Users
             .AsNoTracking()
             .OrderBy(u => u.Id)
-            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role))
+            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role, u.SessionVersion))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -76,7 +76,7 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         return taken;
     }
 
-    public async Task<int> AddAsync(User user, int? adminId, CancellationToken cancellationToken = default)
+    public async Task<int> AddAsync(User user, Actor? actor, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
 
@@ -84,7 +84,7 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         {
             await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            if (adminId is { } admin)
+            if (actor is { } admin)
             {
                 await Actors.RequireAsync(db, admin, admin: true, cancellationToken).ConfigureAwait(false);
             }
@@ -112,7 +112,7 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         }
     }
 
-    public async Task<AccountUpdateOutcome> UpdateAsync(int adminId, AccountUpdate update, CancellationToken cancellationToken = default)
+    public async Task<AccountUpdateOutcome> UpdateAsync(Actor actor, AccountUpdate update, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(update);
 
@@ -124,23 +124,34 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
 
             // Decided under the lock that every role change takes: an admin demoted concurrently has lost
             // the role here already, so it can neither change accounts nor give the role back to itself.
-            await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+            await Actors.RequireAsync(db, actor, admin: true, cancellationToken).ConfigureAwait(false);
 
             var id = update.UserId;
-            var keepsAdmin = update.Role == UserRole.Admin;
+            var expectedVersion = update.ExpectedVersion;
+            var role = update.Role;
+            var keepsAdmin = role == UserRole.Admin;
             var hash = update.NewPasswordHash;
+            var newPassword = hash is not null;
 
-            // The WHERE clause is the final decision: an admin keeps the role, or another admin exists.
-            // The admin role lock above keeps a concurrent demotion from passing the same check.
+            // The WHERE clause is the final decision: the account still has the session version the form
+            // loaded (no role or password change since, so a stale form cannot give back a role another
+            // admin just took away), and an admin keeps the role or another admin exists. The admin role
+            // lock above keeps a concurrent demotion from passing the same check.
             var updated = await db.Users
-                .Where(u => u.Id == id && (keepsAdmin || u.Role != UserRole.Admin || db.Users.Any(o => o.Id != id && o.Role == UserRole.Admin)))
+                .Where(u => u.Id == id
+                    && u.SessionVersion == expectedVersion
+                    && (keepsAdmin || u.Role != UserRole.Admin || db.Users.Any(o => o.Id != id && o.Role == UserRole.Admin)))
                 .ExecuteUpdateAsync(
                     s =>
                     {
-                        s.SetProperty(u => u.UserName, update.UserName)
+                        // A new role or password ends every open session of the account for good: the
+                        // version is computed from the row before the SET, so it rises exactly when the
+                        // stored role differs or a password is set.
+                        s.SetProperty(u => u.SessionVersion, u => newPassword || u.Role != role ? u.SessionVersion + 1 : u.SessionVersion)
+                            .SetProperty(u => u.UserName, update.UserName)
                             .SetProperty(u => u.Email, update.Email)
                             .SetProperty(u => u.Phone, update.Phone)
-                            .SetProperty(u => u.Role, update.Role);
+                            .SetProperty(u => u.Role, role);
                         if (hash is not null)
                         {
                             // A password set by an admin also lifts a lock.
@@ -159,8 +170,17 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
                 return AccountUpdateOutcome.Updated;
             }
 
-            var exists = await db.Users.AnyAsync(u => u.Id == id, cancellationToken).ConfigureAwait(false);
-            return exists ? AccountUpdateOutcome.LastAdmin : AccountUpdateOutcome.NotFound;
+            var version = await db.Users
+                .Where(u => u.Id == id)
+                .Select(u => (int?)u.SessionVersion)
+                .SingleOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
+            return version switch
+            {
+                null => AccountUpdateOutcome.NotFound,
+                _ when version != expectedVersion => AccountUpdateOutcome.ChangedElsewhere,
+                _ => AccountUpdateOutcome.LastAdmin,
+            };
         }
         catch (DbUpdateException ex)
         {
@@ -175,11 +195,11 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         }
     }
 
-    public async Task<AccountDeleteOutcome> DeleteAsync(int adminId, int userId, CancellationToken cancellationToken = default)
+    public async Task<AccountDeleteOutcome> DeleteAsync(Actor actor, int userId, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-        await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor, admin: true, cancellationToken).ConfigureAwait(false);
 
         // One statement decides: no admin, no rental history.
         var deleted = await db.Users
@@ -205,7 +225,7 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         };
     }
 
-    public async Task<bool> ChangePasswordAsync(AccountCredentials verified, string newPasswordHash, CancellationToken cancellationToken = default)
+    public async Task<int?> ChangePasswordAsync(AccountCredentials verified, string newPasswordHash, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(verified);
         ArgumentException.ThrowIfNullOrEmpty(newPasswordHash);
@@ -214,16 +234,22 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         var id = verified.Id;
         var verifiedHash = verified.PasswordHash;
         var verifiedFormat = verified.PasswordFormat;
+        var verifiedVersion = verified.SessionVersion;
+        var newVersion = verifiedVersion + 1;
+
+        // The WHERE clause is the final decision: the password and the session version are still the ones
+        // that were verified, so a concurrent reset, role change or other password change wins.
         var updated = await db.Users
-            .Where(u => u.Id == id && u.PasswordHash == verifiedHash && u.PasswordFormat == verifiedFormat)
+            .Where(u => u.Id == id && u.PasswordHash == verifiedHash && u.PasswordFormat == verifiedFormat && u.SessionVersion == verifiedVersion)
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(u => u.PasswordHash, newPasswordHash)
                     .SetProperty(u => u.PasswordFormat, PasswordFormat.Pbkdf2)
-                    .SetProperty(u => u.FailedLoginCount, 0),
+                    .SetProperty(u => u.FailedLoginCount, 0)
+                    .SetProperty(u => u.SessionVersion, newVersion),
                 cancellationToken)
             .ConfigureAwait(false);
-        return updated == 1;
+        return updated == 1 ? newVersion : null;
     }
 
     public async Task<bool> AnyAdminAsync(CancellationToken cancellationToken = default)
@@ -311,13 +337,44 @@ internal sealed class UserRepository(IDbContextFactory<FilmDbContext> contextFac
         }
     }
 
-    public async Task RecordFailedLoginAsync(int userId, int maxAttempts, DateTime lockoutEnd, CancellationToken cancellationToken = default)
+    public async Task RecordFailedLoginAsync(FailedSignIn attempt, int maxAttempts, TimeSpan lockoutDuration, DateTime now, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(attempt);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxAttempts, 1);
+
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-        // One UPDATE statement, so concurrent failures cannot lose increments.
+        // One conditional UPDATE: concurrent failures cannot lose increments, a failure that arrives while
+        // a lock is in force counts nothing (and neither extends nor ends the lock), and one checked against
+        // a password or session version that has been replaced since counts nothing either.
+        var (name, hash, format, version) = (attempt.UserName, attempt.PasswordHash, (int)attempt.PasswordFormat, attempt.SessionVersion);
+        if (db.Database.IsSqlServer())
+        {
+            // The database's clock decides at the moment of the write, both whether a lock is in force and
+            // when a new one ends; every SET expression sees the row as it was before the statement.
+            var seconds = (int)lockoutDuration.TotalSeconds;
+            await db.Database.ExecuteSqlAsync(
+                $"""
+                UPDATE dbo.Kullanicilar
+                SET KilitBitis = CASE WHEN BasarisizGiris + 1 >= {maxAttempts} THEN DATEADD(second, {seconds}, SYSUTCDATETIME()) ELSE KilitBitis END,
+                    BasarisizGiris = CASE WHEN BasarisizGiris + 1 >= {maxAttempts} THEN 0 ELSE BasarisizGiris + 1 END
+                WHERE KullaniciAdi = {name}
+                  AND (KilitBitis IS NULL OR KilitBitis <= SYSUTCDATETIME())
+                  AND Sifre = {hash} AND SifreBicimi = {format} AND OturumSurumu = {version}
+                """,
+                cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        // Other providers (the tests' SQLite) have no database clock and use the attempt's time.
+        var lockoutEnd = now + lockoutDuration;
+        var passwordFormat = attempt.PasswordFormat;
         await db.Users
-            .Where(u => u.Id == userId)
+            .Where(u => u.UserName == name
+                && (u.LockoutEnd == null || u.LockoutEnd <= now)
+                && u.PasswordHash == hash
+                && u.PasswordFormat == passwordFormat
+                && u.SessionVersion == version)
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(u => u.LockoutEnd, u => u.FailedLoginCount + 1 >= maxAttempts ? lockoutEnd : u.LockoutEnd)

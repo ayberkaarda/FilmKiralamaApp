@@ -46,9 +46,61 @@ internal static class TestServices
         return services;
     }
 
-    public static UserSession User(int id) => new(id, "kullanici" + id.ToString(CultureInfo.InvariantCulture), UserRole.User);
+    public static UserSession User(int id) => new(id, "kullanici" + id.ToString(CultureInfo.InvariantCulture), UserRole.User, sessionVersion: 0);
 
-    public static UserSession Admin(int id) => new(id, "yonetici" + id.ToString(CultureInfo.InvariantCulture), UserRole.Admin);
+    public static UserSession Admin(int id) => new(id, "yonetici" + id.ToString(CultureInfo.InvariantCulture), UserRole.Admin, sessionVersion: 0);
+
+    /// <summary>
+    /// A session of account <paramref name="userId"/> with its stored role and session version, as a new
+    /// sign-in would issue it now.
+    /// </summary>
+    public static async Task<UserSession> CurrentSessionAsync(IServiceProvider provider, int userId)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await provider.GetRequiredService<IDbContextFactory<FilmDbContext>>().CreateDbContextAsync(ct);
+        var account = await db.Users.Where(u => u.Id == userId).Select(u => new { u.UserName, u.Role, u.SessionVersion }).SingleAsync(ct);
+        return new UserSession(userId, account.UserName, account.Role, account.SessionVersion);
+    }
+
+    /// <summary>
+    /// Changes account <paramref name="userId"/> as the admin's form does right after loading it: the
+    /// version comes from the account list <paramref name="session"/> reads just before. A session that
+    /// may not read the list sends version 0, so the change itself decides the refusal.
+    /// </summary>
+    public static async Task UpdateLoadedAsync(this IAccountService accounts, UserSession session, int userId, AccountInput input, CancellationToken ct)
+    {
+        int version;
+        try
+        {
+            version = (await accounts.GetAllAsync(session, ct)).SingleOrDefault(u => u.Id == userId)?.Version ?? 0;
+        }
+        catch (AccessDeniedException)
+        {
+            version = 0;
+        }
+
+        await accounts.UpdateAsync(session, userId, version, input, ct);
+    }
+
+    /// <summary>
+    /// Changes film <paramref name="filmId"/> as the admin's form does right after loading it: the version
+    /// comes from the film <paramref name="session"/> reads just before. A session that may not read it
+    /// sends version 1, so the change itself decides the refusal.
+    /// </summary>
+    public static async Task UpdateLoadedAsync(this IFilmService films, UserSession session, int filmId, FilmInput input, CancellationToken ct)
+    {
+        int version;
+        try
+        {
+            version = (await films.GetAsync(session, filmId, ct)).Version;
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or BusinessRuleException)
+        {
+            version = 1;
+        }
+
+        await films.UpdateAsync(session, filmId, version, input, ct);
+    }
 
     /// <summary>Registers a customer through the real service and returns its session.</summary>
     public static async Task<UserSession> RegisterAsync(IServiceProvider provider, string name, int number)
