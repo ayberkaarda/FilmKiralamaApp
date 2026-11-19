@@ -137,7 +137,7 @@ public sealed class ReviewServiceTests
     [Fact]
     public async Task FilmReviews_AverageIsRoundedAndAuthorsAreMasked()
     {
-        _films.Setup(f => f.FindAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(new Film { Id = 3, IsListed = true });
+        _films.Setup(f => f.FindAsync(Sessions.User.Actor, 3, It.IsAny<CancellationToken>())).ReturnsAsync(new Film { Id = 3, IsListed = true });
         _reviews.Setup(r => r.GetVisibleAsync(Sessions.User.Actor, 3, ReviewPolicy.ShownWithFilm, It.IsAny<CancellationToken>()))
             .ReturnsAsync(([new ReviewDetails(1, 3, "Film", 9, "ılgaz.deniz", 4, "Güzel", false, Now.AddDays(-1))], new RatingTotals(3, 11)));
 
@@ -154,7 +154,7 @@ public sealed class ReviewServiceTests
     [Fact]
     public async Task FilmReviews_OfAnUnlistedFilm_AreMissingForCustomers()
     {
-        _films.Setup(f => f.FindAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(new Film { Id = 3, IsListed = false });
+        _films.Setup(f => f.FindAsync(Sessions.User.Actor, 3, It.IsAny<CancellationToken>())).ReturnsAsync((Film?)null);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().GetFilmReviewsAsync(Sessions.User, 3, Ct));
 

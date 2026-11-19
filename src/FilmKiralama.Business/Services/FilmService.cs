@@ -46,7 +46,10 @@ public interface IFilmService
     /// <summary>Genres, directors and years to filter by.</summary>
     Task<FilmFilterOptions> GetFilterOptionsAsync(UserSession session, CancellationToken cancellationToken = default);
 
-    /// <summary>A film a customer may rent; an unlisted film is treated as missing for non-admins.</summary>
+    /// <summary>
+    /// A film the session may see; an unlisted film is treated as missing unless the account is an admin
+    /// in the database at the moment of the read.
+    /// </summary>
     /// <exception cref="BusinessRuleException">The film does not exist (or is unlisted).</exception>
     Task<Film> GetAsync(UserSession session, int filmId, CancellationToken cancellationToken = default);
 
@@ -115,13 +118,10 @@ internal sealed class FilmService(
     public async Task<Film> GetAsync(UserSession session, int filmId, CancellationToken cancellationToken = default)
     {
         Access.RequireSignedIn(session);
-        var film = await films.FindAsync(filmId, cancellationToken).ConfigureAwait(false);
-        if (film is null || (!film.IsListed && !session.IsAdmin))
-        {
-            throw new BusinessRuleException(NotFound);
-        }
 
-        return film;
+        // The repository decides with the stored role whether an unlisted film may be seen.
+        return await audit.AsActorAsync(session, () => films.FindAsync(session.Actor, filmId, cancellationToken)).ConfigureAwait(false)
+            ?? throw new BusinessRuleException(NotFound);
     }
 
     public Task<IReadOnlyList<Film>> GetAllAsync(UserSession session, CancellationToken cancellationToken = default)

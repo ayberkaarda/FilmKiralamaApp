@@ -122,9 +122,9 @@ internal sealed class ReviewService(
     {
         Access.RequireSignedIn(session);
 
-        // The reviews of a film a customer may not see are as missing as the film.
-        var film = await films.FindAsync(filmId, cancellationToken).ConfigureAwait(false);
-        if (film is null || (!film.IsListed && !session.IsAdmin))
+        // The reviews of a film the account may not see (decided with its stored role) are as missing as
+        // the film.
+        if (await audit.AsActorAsync(session, () => films.FindAsync(session.Actor, filmId, cancellationToken)).ConfigureAwait(false) is null)
         {
             throw new BusinessRuleException(FilmNotFound);
         }

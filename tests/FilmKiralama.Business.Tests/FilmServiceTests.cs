@@ -164,16 +164,33 @@ public sealed class FilmServiceTests
         Assert.Equal(FilmService.HasRentals, error.Message);
     }
 
+    /// <summary>
+    /// Whether an unlisted film may be seen is the repository's decision, made with the stored role: the
+    /// service passes the session's actor and treats no film as missing, also for a session that says admin.
+    /// </summary>
     [Fact]
-    public async Task Get_UnlistedFilm_IsMissingForAUserButVisibleToAnAdmin()
+    public async Task Get_FilmTheRepositoryDoesNotFind_IsMissingWhateverTheSessionSays()
     {
         var hidden = new Film { Id = 3, Title = "Gizli", IsListed = false };
-        _films.Setup(f => f.FindAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(hidden);
+        _films.Setup(f => f.FindAsync(Sessions.User.Actor, 3, It.IsAny<CancellationToken>())).ReturnsAsync((Film?)null);
+        _films.Setup(f => f.FindAsync(Sessions.Admin.Actor, 3, It.IsAny<CancellationToken>())).ReturnsAsync(hidden);
+        _films.Setup(f => f.FindAsync(Sessions.Admin.Actor, 4, It.IsAny<CancellationToken>())).ReturnsAsync((Film?)null);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().GetAsync(Sessions.User, 3, Ct));
 
         Assert.Equal(FilmService.NotFound, error.Message);
         Assert.Same(hidden, await Service().GetAsync(Sessions.Admin, 3, Ct));
+        Assert.Equal(FilmService.NotFound, (await Assert.ThrowsAsync<BusinessRuleException>(() => Service().GetAsync(Sessions.Admin, 4, Ct))).Message);
+    }
+
+    [Fact]
+    public async Task Get_RevokedSession_IsToldToSignInAgain()
+    {
+        _films.Setup(f => f.FindAsync(Sessions.Admin.Actor, 3, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
+
+        var error = await Assert.ThrowsAsync<AccessDeniedException>(() => Service().GetAsync(Sessions.Admin, 3, Ct));
+
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, error.Message);
     }
 
     private FilmService Service() => new(_films.Object, _time, _audit, TestValidators.Film, new Validation.CatalogQueryValidator());

@@ -25,7 +25,14 @@ public interface IFilmRepository
     /// <exception cref="ActorRevokedException"><paramref name="actor"/> is no longer a stored admin, or its session was revoked.</exception>
     Task<IReadOnlyList<Film>> GetAllAsync(Actor actor, CancellationToken cancellationToken = default);
 
-    Task<Film?> FindAsync(int filmId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Film <paramref name="filmId"/> as account <paramref name="actor"/> may see it: a listed film for
+    /// every account, an unlisted one only while the stored account is an admin. The actor is checked
+    /// first, and the stored role is part of the query itself, so a session that still says admin but
+    /// whose account no longer is one gets <see langword="null"/>, as for a missing film.
+    /// </summary>
+    /// <exception cref="ActorRevokedException"><paramref name="actor"/> no longer exists, or its session was revoked.</exception>
+    Task<Film?> FindAsync(Actor actor, int filmId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Stores a new film with all its copies on the shelf and returns its id. The admin

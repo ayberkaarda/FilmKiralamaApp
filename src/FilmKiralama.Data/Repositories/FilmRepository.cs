@@ -63,10 +63,20 @@ internal sealed class FilmRepository(IDbContextFactory<FilmDbContext> contextFac
         return await db.Films.AsNoTracking().OrderBy(f => f.Id).ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<Film?> FindAsync(int filmId, CancellationToken cancellationToken = default)
+    public async Task<Film?> FindAsync(Actor actor, int filmId, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        return await db.Films.AsNoTracking().SingleOrDefaultAsync(f => f.Id == filmId, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor, admin: false, cancellationToken).ConfigureAwait(false);
+
+        // The stored role decides, in the same query: an unlisted film is only found for an account that
+        // is an admin (with the session's version) at the moment of the read.
+        var (actorId, version) = actor;
+        return await db.Films
+            .AsNoTracking()
+            .Where(f => f.Id == filmId
+                && (f.IsListed || db.Users.Any(u => u.Id == actorId && u.SessionVersion == version && u.Role == UserRole.Admin)))
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async Task<int> AddAsync(Actor actor, Film film, CancellationToken cancellationToken = default)

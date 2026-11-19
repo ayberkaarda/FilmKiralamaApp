@@ -497,6 +497,39 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         await auth.SignInAsync("ornek", "Yeni.Sifre123", Ct);
     }
 
+    /// <summary>
+    /// An unlisted film and its reviews are found only for an account that is an admin in the database at
+    /// the moment of the read: a session that still says admin, but whose stored role is no longer admin
+    /// (changed by another tool that left the session version alone), finds neither, and a revoked
+    /// session is told to sign in again.
+    /// </summary>
+    [Fact]
+    public async Task UnlistedFilm_IsFoundOnlyForAStoredAdmin()
+    {
+        var films = _db.Get<IFilmService>();
+        var hidden = await AddFilmAsync(_db.Services, "Gizli Film", 1);
+        await UpdateFilmAsync(hidden, listed: false);
+        var admin = await _db.Get<IAuthService>().SignInAsync("yonetici", "Demo.Yonetici1", Ct);
+        Assert.Equal("Gizli Film", (await films.GetAsync(admin, hidden, Ct)).Title);
+        await _db.Get<IReviewService>().GetFilmReviewsAsync(admin, hidden, Ct);
+
+        await using (var db = _db.CreateContext())
+        {
+            await db.Users.Where(u => u.Id == SeedAdminId).ExecuteUpdateAsync(s => s.SetProperty(u => u.Role, UserRole.User), Ct);
+        }
+
+        Assert.Equal(FilmService.NotFound, (await Assert.ThrowsAsync<BusinessRuleException>(() => films.GetAsync(admin, hidden, Ct))).Message);
+        Assert.Equal(ReviewService.FilmNotFound, (await Assert.ThrowsAsync<BusinessRuleException>(() => _db.Get<IReviewService>().GetFilmReviewsAsync(admin, hidden, Ct))).Message);
+
+        await using (var db = _db.CreateContext())
+        {
+            await db.Users.Where(u => u.Id == SeedAdminId).ExecuteUpdateAsync(s => s.SetProperty(u => u.Role, UserRole.Admin).SetProperty(u => u.SessionVersion, 5), Ct);
+        }
+
+        var revoked = await Assert.ThrowsAsync<AccessDeniedException>(() => films.GetAsync(admin, ThreeCopiesFilmId, Ct));
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, revoked.Message);
+    }
+
     /// <summary>A customer cannot make itself an admin, whatever its session says.</summary>
     [Fact]
     public async Task UserSession_CannotRaiseItsOwnRole()
