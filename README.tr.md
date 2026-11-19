@@ -488,3 +488,7 @@ Hedef makinede .NET 10 Desktop Runtime gerekir. `appsettings.json` dosyasını `
 ## 📧 İletişim
 
 Proje hakkındaki sorularınız için iletişime geçebilir ya da pull request gönderebilirsiniz.
+
+## Lisans
+
+[MIT Lisansı](LICENSE) ile yayımlanmıştır.
