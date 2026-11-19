@@ -136,6 +136,13 @@ public sealed class LegacyUpgradeTests
         var filmId = await AddFilmAsync(provider, "Yeni Film", 2, admin: admin);
         Assert.True(filmId > 9);
 
+        // The tables added after the original schema work on the upgraded database: the customer rates
+        // the old film just returned and puts another one on the watchlist.
+        await provider.GetRequiredService<FilmKiralama.Business.Reviews.IReviewService>().SaveAsync(user, 4, new FilmKiralama.Business.Reviews.ReviewInput(4, "Eski ama iyi"), Ct);
+        Assert.True(await provider.GetRequiredService<FilmKiralama.Business.Watchlists.IWatchlistService>().AddAsync(user, filmId, Ct));
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Degerlendirmeler WHERE FilmID = 4 AND KullaniciID = 5 AND Puan = 4", Ct));
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.IzlemeListesi WHERE KullaniciID = 5", Ct));
+
         // Rows the upgrade kept with NULLs can be saved from the admin forms as they are: the password of
         // an account without e-mail and phone is reset, a film without a description is listed again.
         await provider.GetRequiredService<IAccountService>().UpdateAsync(admin, 6, new AccountInput("eski", "Yeni.Sifre12", "", "", UserRole.User), Ct);

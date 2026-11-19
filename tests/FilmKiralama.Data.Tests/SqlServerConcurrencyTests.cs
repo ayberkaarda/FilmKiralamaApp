@@ -263,6 +263,77 @@ public sealed class SqlServerConcurrencyTests
         }
     }
 
+    /// <summary>
+    /// The same film added twice at the same moment from two instances: both adds succeed (one adds it,
+    /// one finds it there) and the list holds it once.
+    /// </summary>
+    [Fact]
+    public async Task Watchlist_SameFilmAddedTwiceAtOnce_IsListedOnce()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices(demo: true);
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        await using var b = database.BuildServices();
+        var customer = await RegisterAsync(a, "liste", 1);
+
+        for (var round = 0; round < Rounds; round++)
+        {
+            var filmId = await AddFilmAsync(a, "Liste " + round, copies: 1);
+            var added = new bool[2];
+
+            var results = await RaceAsync(
+            [
+                async () => added[0] = await a.GetRequiredService<FilmKiralama.Business.Watchlists.IWatchlistService>().AddAsync(customer, filmId, Ct),
+                async () => added[1] = await b.GetRequiredService<FilmKiralama.Business.Watchlists.IWatchlistService>().AddAsync(customer, filmId, Ct),
+            ]);
+
+            Assert.All(results, Assert.Null);
+            Assert.Single(added, x => x);
+            Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.IzlemeListesi WHERE FilmID = @id", Ct, ("@id", filmId)));
+        }
+    }
+
+    /// <summary>One place left on a list and two different films added at once: one fits, the other is refused.</summary>
+    [Fact]
+    public async Task Watchlist_LastPlaceTakenTwiceAtOnce_HoldsTheLimit()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices(demo: true);
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        await using var b = database.BuildServices();
+        var limit = FilmKiralama.Business.Watchlists.WatchlistPolicy.MaxEntries;
+        await database.ExecuteAsync(
+            """
+            INSERT dbo.Filmler (Ad, Tur, Yil, Yonetmen, GunlukUcret, Adet, MevcutAdet, KiralamayaAcik)
+                SELECT TOP (@count) CONCAT(N'Dolu ', ROW_NUMBER() OVER (ORDER BY (SELECT NULL))), N'Dram', 2020, N'Ece', 5, 1, 1, 1 FROM sys.all_objects;
+            """,
+            Ct,
+            ("@count", limit + 1));
+        var first = await database.ScalarAsync("SELECT MAX(FilmID) FROM dbo.Filmler WHERE Ad LIKE N'Dolu %'", Ct);
+        var second = first - 1;
+
+        for (var round = 0; round < Rounds; round++)
+        {
+            var customer = await RegisterAsync(a, "dolu" + round, 10 + round);
+            await database.ExecuteAsync(
+                "INSERT dbo.IzlemeListesi (KullaniciID, FilmID, EklenmeTarihi) SELECT TOP (@count) @user, FilmID, SYSUTCDATETIME() FROM dbo.Filmler WHERE Ad LIKE N'Dolu %' AND FilmID < @second ORDER BY FilmID",
+                Ct,
+                ("@count", limit - 1),
+                ("@user", customer.UserId),
+                ("@second", second));
+
+            var results = await RaceAsync(
+            [
+                () => a.GetRequiredService<FilmKiralama.Business.Watchlists.IWatchlistService>().AddAsync(customer, first, Ct),
+                () => b.GetRequiredService<FilmKiralama.Business.Watchlists.IWatchlistService>().AddAsync(customer, second, Ct),
+            ]);
+
+            Assert.Single(results, r => r is null);
+            Assert.Equal(FilmKiralama.Business.Watchlists.WatchlistService.ListFull, Assert.IsType<BusinessRuleException>(Assert.Single(results, r => r is not null)).Message);
+            Assert.Equal(limit, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.IzlemeListesi WHERE KullaniciID = @user", Ct, ("@user", customer.UserId)));
+        }
+    }
+
     private static AccountInput Input(string name, int number, UserRole role) =>
         new(name, Password, name + "@example.com", "553" + number.ToString("0000000", System.Globalization.CultureInfo.InvariantCulture), role);
 
