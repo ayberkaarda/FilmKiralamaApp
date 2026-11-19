@@ -60,6 +60,9 @@ public enum AuditEvent
     /// recorded with the role the session signed in with.
     /// </summary>
     SessionRevoked = 15,
+
+    /// <summary>A sign-up used a user name, e-mail address or phone number that is taken; no account was created.</summary>
+    RegistrationNotCompleted = 16,
 }
 
 /// <summary>Role of the account an <see cref="AuditEvent"/> concerns.</summary>
@@ -96,8 +99,24 @@ public static class AuditCodes
         AuditEvent.RentalReturned => "rental.returned",
         AuditEvent.AccountChanged => "account.changed",
         AuditEvent.SessionRevoked => "access.session_revoked",
+        AuditEvent.RegistrationNotCompleted => "auth.account.registration_not_completed",
         _ => throw new ArgumentOutOfRangeException(nameof(auditEvent), auditEvent, "Unknown audit event."),
     };
+
+    /// <summary>
+    /// The code written to a log file the local Windows user can read. It is <see cref="Of(AuditEvent)"/>
+    /// except for the two outcomes of a sign-up: a new account and a taken name, e-mail address or phone
+    /// number share one neutral code, because whoever made the attempt knows its time and could
+    /// otherwise tell from the file whether someone else's values are registered.
+    /// </summary>
+    public static string ForPublicLog(AuditEvent auditEvent) => auditEvent switch
+    {
+        AuditEvent.AccountRegistered or AuditEvent.RegistrationNotCompleted => RegistrationSubmitted,
+        _ => Of(auditEvent),
+    };
+
+    /// <summary>The neutral code of <see cref="ForPublicLog"/> for both sign-up outcomes.</summary>
+    public const string RegistrationSubmitted = "auth.account.registration_submitted";
 
     /// <summary>Lower case role name as it is written to the log.</summary>
     public static string Of(AuditRole role) => role switch

@@ -51,9 +51,10 @@ internal sealed class AuthService(
         var check = signInValidator.Validate(input);
         if (!check.IsValid)
         {
+            // Recorded like every other refused sign-in: one code, no role.
             if (check.Errors[0].ErrorCode != SignInInputValidator.Unacceptable)
             {
-                throw new BusinessRuleException(InputRequired);
+                throw Refused(InputRequired);
             }
 
             // No account can have such a name or password; refused like a wrong password.
@@ -133,7 +134,7 @@ internal sealed class AuthService(
         var taken = await users.FindTakenAsync(name, mail, digits, null, cancellationToken).ConfigureAwait(false);
         if (taken != AccountFields.None)
         {
-            throw new BusinessRuleException(AccountRules.DescribeTaken(taken));
+            throw NotRegistered(taken);
         }
 
         var user = new User
@@ -153,7 +154,7 @@ internal sealed class AuthService(
         catch (DuplicateAccountException ex)
         {
             // Registered concurrently between the check and the insert.
-            throw new BusinessRuleException(AccountRules.DescribeTaken(ex.Fields), ex);
+            throw NotRegistered(ex.Fields, ex);
         }
 
         audit.Record(AuditEvent.AccountRegistered, AuditRole.User);
@@ -199,10 +200,21 @@ internal sealed class AuthService(
         audit.Record(AuditEvent.PasswordChanged, role);
     }
 
-    /// <summary>The one answer and the one audit code of every refused sign-in.</summary>
-    private BusinessRuleException Refused()
+    /// <summary>
+    /// The one audit code of every refused sign-in, without a role; the answer is
+    /// <see cref="CredentialsInvalid"/> unless the name or the password was left empty.
+    /// </summary>
+    private BusinessRuleException Refused(string? message = null)
     {
         audit.Record(AuditEvent.SignInFailed, AuditRole.Unknown);
-        return new BusinessRuleException(CredentialsInvalid);
+        return new BusinessRuleException(message ?? CredentialsInvalid);
+    }
+
+    /// <summary>A sign-up that found its values taken; the log cannot tell it from a new account.</summary>
+    private BusinessRuleException NotRegistered(AccountFields taken, Exception? innerException = null)
+    {
+        audit.Record(AuditEvent.RegistrationNotCompleted, AuditRole.User);
+        var message = AccountRules.DescribeTaken(taken);
+        return innerException is null ? new BusinessRuleException(message) : new BusinessRuleException(message, innerException);
     }
 }

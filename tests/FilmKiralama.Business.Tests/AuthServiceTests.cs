@@ -33,6 +33,7 @@ public sealed class AuthServiceTests
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().SignInAsync(userName, password, Ct));
 
         Assert.Equal(AuthService.InputRequired, error.Message);
+        Assert.Equal(["auth.sign_in.failed unknown"], _audit.Entries);
         _users.VerifyNoOtherCalls();
     }
 
