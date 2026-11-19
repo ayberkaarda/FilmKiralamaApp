@@ -451,8 +451,8 @@ public abstract class AppDialog : Form, IStatusSurface
                 }
             }
 
-            // A container that scrolls its own content (the film cards) needs room for itself, not for all it holds.
-            if (child is IScrollsOwnContent)
+            // A container that scrolls its own content (the film cards, a table) needs room for itself, not for all it holds.
+            if (child is IScrollsOwnContent or DataGridView)
             {
                 continue;
             }

@@ -487,8 +487,10 @@ internal sealed class RentalCard : CardPanel, IGridCard
     private readonly Label _title;
     private readonly Label _dates;
     private readonly Label _price;
+    private readonly Label? _tenant;
 
-    public RentalCard(RentalDetails rental, string actionText)
+    /// <param name="showTenant">Whether the card names the account that rented the film (the admin's list).</param>
+    public RentalCard(RentalDetails rental, string actionText, bool showTenant = false)
     {
         ArgumentNullException.ThrowIfNull(rental);
 
@@ -512,6 +514,11 @@ internal sealed class RentalCard : CardPanel, IGridCard
         _price = Line("lblUcret", rental.Genre + " · " + DisplayFormat.Money(rental.Price), Theme.Fonts.Caption, p.TextMuted);
         Action = new ThemedButton(ButtonKind.Secondary) { Name = "btnIade", Text = actionText, Glyph = Glyphs.Return, AutoSize = false, AccessibleDescription = rental.FilmTitle };
         Controls.AddRange([Poster, _title, _dates, _price, Action]);
+        if (showTenant)
+        {
+            _tenant = Line("lblKiraci", "Kiracı: " + rental.UserName + " (No " + rental.UserId.ToString(CultureInfo.InvariantCulture) + ")", Theme.Fonts.Caption, p.TextSecondary);
+            Controls.Add(_tenant);
+        }
     }
 
     public RentalDetails Rental { get; }
@@ -556,7 +563,14 @@ internal sealed class RentalCard : CardPanel, IGridCard
         bounds.Add((_dates, new Rectangle(left, y, inner, _dates.Font.Height)));
         y += _dates.Font.Height;
         bounds.Add((_price, new Rectangle(left, y, inner, _price.Font.Height)));
-        y += _price.Font.Height + Theme.Px(this, Spacing.M);
+        y += _price.Font.Height;
+        if (_tenant is not null)
+        {
+            bounds.Add((_tenant, new Rectangle(left, y, inner, _tenant.Font.Height)));
+            y += _tenant.Font.Height;
+        }
+
+        y += Theme.Px(this, Spacing.M);
 
         var preferred = Action.GetPreferredSize(Size.Empty);
         var buttonHeight = Math.Max(Theme.Px(this, Sizes.ControlHeight), preferred.Height);

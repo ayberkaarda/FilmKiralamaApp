@@ -163,6 +163,6 @@ public sealed class ExclusiveWriteTests
         Assert.Equal("Ad boş bırakılamaz.", errors.GetError(Find<TextBox>(form, "txtAd")));
         Assert.Equal("Ücret boş bırakılamaz.", errors.GetError(Find<TextBox>(form, "txtUcret")));
         Assert.Empty(errors.GetError(Find<TextBox>(form, "txtTur")));
-        Assert.Contains(NoDialogs.Requested, r => r.Contains("Lütfen gerekli alanları doldurun.", StringComparison.Ordinal));
+        Assert.Equal("Lütfen gerekli alanları doldurun.", form.StatusBar.Text);
     });
 }

@@ -73,6 +73,18 @@ internal sealed class ThemedGrid : DataGridView, IThemeAware
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public IReadOnlyDictionary<string, float> ColumnWeights { get; set; } = new Dictionary<string, float>();
 
+    /// <summary>Header texts that replace the generated ones, by property name.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public IReadOnlyDictionary<string, string> ColumnHeaders { get; set; } = new Dictionary<string, string>();
+
+    /// <summary>Columns, by property name, as wide as their content (numbers and dates); the others share the rest.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public IReadOnlySet<string> FitColumns { get; set; } = new HashSet<string>();
+
+    /// <summary>Properties of the bound rows that get no column of their own, for long texts shown elsewhere.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public IReadOnlySet<string> HiddenColumns { get; set; } = new HashSet<string>();
+
     /// <summary>
     /// The color a cell's text takes, for example a state column; <see langword="null"/> keeps the table's color.
     /// Ignored under high contrast, where the system colors stay.
@@ -159,6 +171,17 @@ internal sealed class ThemedGrid : DataGridView, IThemeAware
             if (ColumnWeights.TryGetValue(column.DataPropertyName, out var weight))
             {
                 column.FillWeight = weight;
+            }
+
+            if (ColumnHeaders.TryGetValue(column.DataPropertyName, out var header))
+            {
+                column.HeaderText = header;
+            }
+
+            column.Visible = !HiddenColumns.Contains(column.DataPropertyName);
+            if (FitColumns.Contains(column.DataPropertyName))
+            {
+                column.AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells;
             }
         }
 
