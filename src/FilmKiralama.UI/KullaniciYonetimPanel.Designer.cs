@@ -1,4 +1,4 @@
-﻿namespace FilmKiralama
+namespace FilmKiralama.UI
 {
     partial class KullaniciYonetimPanel
     {
@@ -31,7 +31,6 @@
             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle1 = new System.Windows.Forms.DataGridViewCellStyle();
             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle2 = new System.Windows.Forms.DataGridViewCellStyle();
             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle3 = new System.Windows.Forms.DataGridViewCellStyle();
-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(KullaniciYonetimPanel));
             this.cmbRol = new System.Windows.Forms.ComboBox();
             this.btnPanelCikis = new System.Windows.Forms.Button();
             this.btnKullaniciEkle = new System.Windows.Forms.Button();
@@ -106,8 +105,6 @@
             this.txtTelefon.Name = "txtTelefon";
             this.txtTelefon.Size = new System.Drawing.Size(194, 22);
             this.txtTelefon.TabIndex = 57;
-            this.txtTelefon.TextChanged += new System.EventHandler(this.txtTelefon_TextChanged);
-            this.txtTelefon.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.txtTelefon_KeyPress);
             // 
             // txtEposta
             // 
@@ -197,7 +194,7 @@
             this.label4.Name = "label4";
             this.label4.Size = new System.Drawing.Size(42, 18);
             this.label4.TabIndex = 43;
-            this.label4.Text = "Şifre:";
+            this.label4.Text = "Yeni Şifre:";
             // 
             // label2
             // 
@@ -286,7 +283,6 @@
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.BackgroundImage = global::FilmKiralama.Properties.Resources.background;
             this.ClientSize = new System.Drawing.Size(1271, 542);
             this.Controls.Add(this.cmbRol);
             this.Controls.Add(this.btnPanelCikis);
@@ -306,12 +302,10 @@
             this.Controls.Add(this.label1);
             this.Controls.Add(this.dataGridView1);
             this.Controls.Add(this.btnKullaniciPanel);
-            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.Name = "KullaniciYonetimPanel";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "Kullanici Yönetim Paneli";
-            this.Load += new System.EventHandler(this.KullaniciYonetimPanel_Load);
+            this.Text = "Kullanıcı Yönetim Paneli";
             ((System.ComponentModel.ISupportInitialize)(this.dataGridView1)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();

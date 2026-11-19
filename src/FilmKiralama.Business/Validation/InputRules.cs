@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
@@ -48,7 +49,7 @@ public static partial class InputRules
         && value.All(c => char.IsLetterOrDigit(c) || c is '.' or '_' or '-');
 
     /// <summary>The e-mail shape something@something.something, no spaces.</summary>
-    public static bool IsValidEmail(string? value) =>
+    public static bool IsValidEmail([NotNullWhen(true)] string? value) =>
         !string.IsNullOrEmpty(value) && value.Length <= EmailMaxLength && EmailPattern().IsMatch(value);
 
     /// <summary>
@@ -86,7 +87,7 @@ public static partial class InputRules
     }
 
     /// <summary>An absolute http or https address, as the posters are loaded from the web.</summary>
-    public static bool IsValidImageUrl(string? value) =>
+    public static bool IsValidImageUrl([NotNullWhen(true)] string? value) =>
         !string.IsNullOrEmpty(value)
         && value.Length <= ImageUrlMaxLength
         && Uri.TryCreate(value, UriKind.Absolute, out var uri)

@@ -1,6 +1,6 @@
-﻿namespace FilmKiralama
+namespace FilmKiralama.UI
 {
-    partial class AnaForm
+    partial class KiralananFilmlerPanel
     {
         /// <summary>
         /// Required designer variable.
@@ -28,22 +28,17 @@
         /// </summary>
         private void InitializeComponent()
         {
-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(AnaForm));
             this.SuspendLayout();
             // 
-            // AnaForm
+            // KiralananAraclarPanel
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.BackgroundImage = global::FilmKiralama.Properties.Resources.background;
-            this.ClientSize = new System.Drawing.Size(1680, 827);
-            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
-            this.Margin = new System.Windows.Forms.Padding(4);
-            this.Name = "AnaForm";
+            this.ClientSize = new System.Drawing.Size(1708, 878);
+            this.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
+            this.Name = "KiralananAraclarPanel";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "Film Kirala";
-            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.AnaForm_FormClosing);
-            this.Load += new System.EventHandler(this.AnaForm_Load);
+            this.Text = "Kiralanan Filmler";
             this.ResumeLayout(false);
 
         }

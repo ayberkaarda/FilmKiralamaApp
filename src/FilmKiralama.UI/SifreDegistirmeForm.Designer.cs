@@ -1,6 +1,6 @@
-﻿namespace FilmKiralama
+namespace FilmKiralama.UI
 {
-    partial class sifreDegistirmeForm
+    partial class SifreDegistirmeForm
     {
         /// <summary>
         /// Required designer variable.
@@ -28,7 +28,6 @@
         /// </summary>
         private void InitializeComponent()
         {
-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(sifreDegistirmeForm));
             this.label1 = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
             this.label3 = new System.Windows.Forms.Label();
@@ -116,7 +115,6 @@
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.BackgroundImage = global::FilmKiralama.Properties.Resources.background;
             this.ClientSize = new System.Drawing.Size(349, 320);
             this.Controls.Add(this.btnSifreDegistir);
             this.Controls.Add(this.txtYeniSifreTekrar);
@@ -125,11 +123,10 @@
             this.Controls.Add(this.label3);
             this.Controls.Add(this.label2);
             this.Controls.Add(this.label1);
-            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.Name = "sifreDegistirmeForm";
+            this.Name = "SifreDegistirmeForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "sifreDegistirmeForm";
+            this.Text = "Şifre Değiştir";
             this.ResumeLayout(false);
             this.PerformLayout();
 

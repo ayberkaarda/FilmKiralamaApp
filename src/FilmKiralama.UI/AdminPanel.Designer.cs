@@ -1,4 +1,4 @@
-﻿namespace FilmKiralama
+namespace FilmKiralama.UI
 {
     partial class AdminPanel
     {
@@ -32,7 +32,6 @@
             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle1 = new System.Windows.Forms.DataGridViewCellStyle();
             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle2 = new System.Windows.Forms.DataGridViewCellStyle();
             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle3 = new System.Windows.Forms.DataGridViewCellStyle();
-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(AdminPanel));
             this.btnAracDurum = new System.Windows.Forms.Button();
             this.btnKullaniciPanel = new System.Windows.Forms.Button();
             this.dataGridView1 = new System.Windows.Forms.DataGridView();
@@ -61,9 +60,13 @@
             this.btnKiralanlar = new System.Windows.Forms.Button();
             this.label8 = new System.Windows.Forms.Label();
             this.txtHakkinda = new System.Windows.Forms.TextBox();
+            this.lblAdet = new System.Windows.Forms.Label();
+            this.nudAdet = new System.Windows.Forms.NumericUpDown();
+            this.chkKiralamayaAcik = new System.Windows.Forms.CheckBox();
             ((System.ComponentModel.ISupportInitialize)(this.dataGridView1)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.errorProvider1)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.nudAdet)).BeginInit();
             this.SuspendLayout();
             // 
             // btnAracDurum
@@ -150,7 +153,6 @@
             this.label2.Size = new System.Drawing.Size(33, 18);
             this.label2.TabIndex = 4;
             this.label2.Text = "Ad :";
-            this.label2.Click += new System.EventHandler(this.label2_Click);
             // 
             // label3
             // 
@@ -267,7 +269,6 @@
             this.txtYonetmen.Name = "txtYonetmen";
             this.txtYonetmen.Size = new System.Drawing.Size(194, 22);
             this.txtYonetmen.TabIndex = 21;
-            this.txtYonetmen.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.txtKm_KeyPress);
             // 
             // txtUcret
             // 
@@ -277,7 +278,6 @@
             this.txtUcret.Name = "txtUcret";
             this.txtUcret.Size = new System.Drawing.Size(194, 22);
             this.txtUcret.TabIndex = 24;
-            this.txtUcret.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.txtUcret_KeyPress);
             // 
             // txtDurum
             // 
@@ -405,13 +405,51 @@
             this.txtHakkinda.Size = new System.Drawing.Size(194, 169);
             this.txtHakkinda.TabIndex = 39;
             // 
+            // lblAdet
+            // 
+            this.lblAdet.AutoSize = true;
+            this.lblAdet.BackColor = System.Drawing.Color.Transparent;
+            this.lblAdet.Font = new System.Drawing.Font("Microsoft Sans Serif", 11F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(162)));
+            this.lblAdet.ForeColor = System.Drawing.Color.White;
+            this.lblAdet.Location = new System.Drawing.Point(1180, 227);
+            this.lblAdet.Name = "lblAdet";
+            this.lblAdet.Size = new System.Drawing.Size(44, 18);
+            this.lblAdet.TabIndex = 40;
+            this.lblAdet.Text = "Adet :";
+            // 
+            // nudAdet
+            // 
+            this.nudAdet.Location = new System.Drawing.Point(1227, 225);
+            this.nudAdet.Maximum = new decimal(new int[] { 1000, 0, 0, 0 });
+            this.nudAdet.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
+            this.nudAdet.Name = "nudAdet";
+            this.nudAdet.Size = new System.Drawing.Size(40, 22);
+            this.nudAdet.TabIndex = 41;
+            this.nudAdet.Value = new decimal(new int[] { 1, 0, 0, 0 });
+            // 
+            // chkKiralamayaAcik
+            // 
+            this.chkKiralamayaAcik.AutoSize = true;
+            this.chkKiralamayaAcik.BackColor = System.Drawing.Color.Transparent;
+            this.chkKiralamayaAcik.Checked = true;
+            this.chkKiralamayaAcik.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.chkKiralamayaAcik.ForeColor = System.Drawing.Color.White;
+            this.chkKiralamayaAcik.Location = new System.Drawing.Point(1293, 598);
+            this.chkKiralamayaAcik.Name = "chkKiralamayaAcik";
+            this.chkKiralamayaAcik.Size = new System.Drawing.Size(137, 20);
+            this.chkKiralamayaAcik.TabIndex = 42;
+            this.chkKiralamayaAcik.Text = "Kiralamaya açık";
+            this.chkKiralamayaAcik.UseVisualStyleBackColor = false;
+            // 
             // AdminPanel
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.White;
-            this.BackgroundImage = global::FilmKiralama.Properties.Resources.background;
             this.ClientSize = new System.Drawing.Size(1699, 699);
+            this.Controls.Add(this.chkKiralamayaAcik);
+            this.Controls.Add(this.nudAdet);
+            this.Controls.Add(this.lblAdet);
             this.Controls.Add(this.txtHakkinda);
             this.Controls.Add(this.label8);
             this.Controls.Add(this.btnKiralanlar);
@@ -440,16 +478,14 @@
             this.Controls.Add(this.btnKullaniciPanel);
             this.Controls.Add(this.btnAracDurum);
             this.ForeColor = System.Drawing.Color.White;
-            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.Name = "AdminPanel";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "AdminPanel";
-            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.AdminPanel_FormClosing);
-            this.Load += new System.EventHandler(this.AdminPanel_Load);
+            this.Text = "Yönetim Paneli";
             ((System.ComponentModel.ISupportInitialize)(this.dataGridView1)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.errorProvider1)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.nudAdet)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -485,6 +521,9 @@
         private System.Windows.Forms.Button btnKiralanlar;
         private System.Windows.Forms.TextBox txtHakkinda;
         private System.Windows.Forms.Label label8;
+        private System.Windows.Forms.Label lblAdet;
+        private System.Windows.Forms.NumericUpDown nudAdet;
+        private System.Windows.Forms.CheckBox chkKiralamayaAcik;
     }
 }
 

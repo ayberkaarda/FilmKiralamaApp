@@ -1,6 +1,6 @@
-﻿namespace FilmKiralama
+namespace FilmKiralama.UI
 {
-    partial class registerForm
+    partial class RegisterForm
     {
         /// <summary>
         /// Required designer variable.
@@ -28,7 +28,6 @@
         /// </summary>
         private void InitializeComponent()
         {
-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(registerForm));
             this.txtUsername = new System.Windows.Forms.TextBox();
             this.txtPassword = new System.Windows.Forms.TextBox();
             this.txtMail = new System.Windows.Forms.TextBox();
@@ -72,8 +71,6 @@
             this.txtTelefon.Name = "txtTelefon";
             this.txtTelefon.Size = new System.Drawing.Size(132, 22);
             this.txtTelefon.TabIndex = 3;
-            this.txtTelefon.TextChanged += new System.EventHandler(this.txtTelefon_TextChanged);
-            this.txtTelefon.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.txtTelefon_KeyPress);
             // 
             // label1
             // 
@@ -138,7 +135,6 @@
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.BackgroundImage = global::FilmKiralama.Properties.Resources.background;
             this.ClientSize = new System.Drawing.Size(416, 367);
             this.Controls.Add(this.btnKayit);
             this.Controls.Add(this.label4);
@@ -149,12 +145,10 @@
             this.Controls.Add(this.txtMail);
             this.Controls.Add(this.txtPassword);
             this.Controls.Add(this.txtUsername);
-            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Margin = new System.Windows.Forms.Padding(4);
-            this.Name = "registerForm";
+            this.Name = "RegisterForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
-            this.Text = "registerForm";
-            this.Load += new System.EventHandler(this.registerForm_Load);
+            this.Text = "Kayıt Ol";
             this.ResumeLayout(false);
             this.PerformLayout();
 

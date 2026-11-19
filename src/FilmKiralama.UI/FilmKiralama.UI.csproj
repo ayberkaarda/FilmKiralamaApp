@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>FilmKiralama.UI</RootNamespace>
+    <AssemblyName>FilmKiralama</AssemblyName>
+    <Product>Film Kiralama</Product>
+    <NeutralLanguage>tr-TR</NeutralLanguage>
+    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
+    <UserSecretsId>film-kiralama-ui</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="appsettings.example.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="appsettings.json" Condition="Exists('appsettings.json')" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Original artwork, rendered from the SVG sources in assets/. -->
+    <EmbeddedResource Include="..\..\assets\logo.png" Link="Assets\logo.png" LogicalName="FilmKiralama.UI.Assets.logo.png" />
+    <EmbeddedResource Include="..\..\assets\background.png" Link="Assets\background.png" LogicalName="FilmKiralama.UI.Assets.background.png" />
+    <EmbeddedResource Include="..\..\assets\hero.png" Link="Assets\hero.png" LogicalName="FilmKiralama.UI.Assets.hero.png" />
+    <EmbeddedResource Include="..\..\assets\poster.png" Link="Assets\poster.png" LogicalName="FilmKiralama.UI.Assets.poster.png" />
+    <EmbeddedResource Include="..\..\assets\app.ico" Link="Assets\app.ico" LogicalName="FilmKiralama.UI.Assets.app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FilmKiralama.UI.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FilmKiralama.Business\FilmKiralama.Business.csproj" />
+    <ProjectReference Include="..\FilmKiralama.Data\FilmKiralama.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.15" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.15" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.15" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.15" />
+    <PackageReference Include="ReaLTaiizor" Version="3.8.1.2" />
+  </ItemGroup>
+
+</Project>

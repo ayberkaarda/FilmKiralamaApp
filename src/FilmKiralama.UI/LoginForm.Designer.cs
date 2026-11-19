@@ -1,8 +1,7 @@
-﻿
-namespace FilmKiralama
-   
+
+namespace FilmKiralama.UI
 {
-    partial class loginForm
+    partial class LoginForm
     {
         /// <summary>
         ///Gerekli tasarımcı değişkeni.
@@ -30,7 +29,6 @@ namespace FilmKiralama
         /// </summary>
         private void InitializeComponent()
         {
-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(loginForm));
             this.pictureBox1 = new System.Windows.Forms.PictureBox();
             this.bigLabel1 = new ReaLTaiizor.Controls.BigLabel();
             this.dungeonLabel1 = new ReaLTaiizor.Controls.DungeonLabel();
@@ -43,13 +41,13 @@ namespace FilmKiralama
             this.btnOlustur2 = new ReaLTaiizor.Controls.FoxLabel();
             this.button1 = new ReaLTaiizor.Controls.Button();
             this.button2 = new ReaLTaiizor.Controls.Button();
+            this.btnKurulum = new ReaLTaiizor.Controls.FoxLabel();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             this.SuspendLayout();
             // 
             // pictureBox1
             // 
             this.pictureBox1.BackColor = System.Drawing.Color.Transparent;
-            this.pictureBox1.BackgroundImage = global::FilmKiralama.Properties.Resources.lalaland;
             this.pictureBox1.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Stretch;
             this.pictureBox1.Dock = System.Windows.Forms.DockStyle.Left;
             this.pictureBox1.Location = new System.Drawing.Point(0, 0);
@@ -58,7 +56,6 @@ namespace FilmKiralama
             this.pictureBox1.Size = new System.Drawing.Size(545, 737);
             this.pictureBox1.TabIndex = 6;
             this.pictureBox1.TabStop = false;
-            this.pictureBox1.Click += new System.EventHandler(this.pictureBox1_Click);
             // 
             // bigLabel1
             // 
@@ -249,13 +246,28 @@ namespace FilmKiralama
             this.button2.TextAlignment = System.Drawing.StringAlignment.Center;
             this.button2.Click += new System.EventHandler(this.button2_Click);
             // 
+            // btnKurulum
+            // 
+            this.btnKurulum.BackColor = System.Drawing.Color.Transparent;
+            this.btnKurulum.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.btnKurulum.Font = new System.Drawing.Font("Segoe UI", 9.75F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(162)));
+            this.btnKurulum.ForeColor = System.Drawing.Color.White;
+            this.btnKurulum.Location = new System.Drawing.Point(660, 545);
+            this.btnKurulum.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.btnKurulum.Name = "btnKurulum";
+            this.btnKurulum.Size = new System.Drawing.Size(326, 31);
+            this.btnKurulum.TabIndex = 19;
+            this.btnKurulum.Text = "İlk yönetici hesabını oluştur";
+            this.btnKurulum.Visible = false;
+            this.btnKurulum.Click += new System.EventHandler(this.btnKurulum_Click);
+            // 
             // loginForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.DimGray;
-            this.BackgroundImage = global::FilmKiralama.Properties.Resources.background;
             this.ClientSize = new System.Drawing.Size(1096, 737);
+            this.Controls.Add(this.btnKurulum);
             this.Controls.Add(this.button2);
             this.Controls.Add(this.button1);
             this.Controls.Add(this.btnOlustur2);
@@ -269,14 +281,11 @@ namespace FilmKiralama
             this.Controls.Add(this.pictureBox1);
             this.Controls.Add(this.txtSifre2);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None;
-            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.Name = "loginForm";
+            this.Name = "LoginForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "Film Kiralama";
             this.TransparencyKey = System.Drawing.Color.Fuchsia;
-            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.loginForm_FormClosing);
-            this.Load += new System.EventHandler(this.loginForm_Load);
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
@@ -296,6 +305,7 @@ namespace FilmKiralama
         private ReaLTaiizor.Controls.FoxLabel btnOlustur2;
         private ReaLTaiizor.Controls.Button button1;
         private ReaLTaiizor.Controls.Button button2;
+        private ReaLTaiizor.Controls.FoxLabel btnKurulum;
     }
 }
 

@@ -1,6 +1,6 @@
-﻿namespace FilmKiralama
+namespace FilmKiralama.UI
 {
-    partial class kullaniciProfil
+    partial class KullaniciProfil
     {
         /// <summary>
         /// Required designer variable.
@@ -28,7 +28,6 @@
         /// </summary>
         private void InitializeComponent()
         {
-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(kullaniciProfil));
             this.SuspendLayout();
             // 
             // kullaniciProfil
@@ -36,12 +35,10 @@
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(855, 655);
-            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.Name = "kullaniciProfil";
+            this.Name = "KullaniciProfil";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "Kullanıcı Profili";
-            this.Load += new System.EventHandler(this.kullaniciProfil_Load);
             this.ResumeLayout(false);
 
         }
