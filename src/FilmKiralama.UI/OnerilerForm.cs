@@ -3,6 +3,7 @@ using FilmKiralama.Business.Reports;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Business.Watchlists;
 using FilmKiralama.UI.Infrastructure;
+using FilmKiralama.UI.Theming;
 
 namespace FilmKiralama.UI
 {
@@ -10,7 +11,7 @@ namespace FilmKiralama.UI
     /// Films recommended from the customer's own rentals (the genre rented most); rent one or put it on
     /// the watchlist.
     /// </summary>
-    public sealed class OnerilerForm : Form
+    public sealed class OnerilerForm : AppDialog
     {
         private readonly IRecommendationService _recommendations;
         private readonly IWatchlistService _watchlist;
@@ -18,13 +19,15 @@ namespace FilmKiralama.UI
         private readonly UserSession _session;
         private readonly ExclusiveOperation _write = new();
         private readonly RequestSequence _loads = new();
-        private readonly DataGridView _grid;
-        private readonly Label _summary;
-        private readonly Button _rent;
-        private readonly Button _add;
         private bool _binding;
 
+        private readonly Label lblOzet = FormLayout.Text(nameof(lblOzet));
+        private readonly ThemedGrid dgvOneriler = new() { Name = nameof(dgvOneriler) };
+        private readonly ThemedButton btnKirala = FormLayout.Button(nameof(btnKirala), "Kirala", ButtonKind.Primary, Glyphs.Cart);
+        private readonly ThemedButton btnListeyeEkle = FormLayout.Button(nameof(btnListeyeEkle), "Listeye ekle", ButtonKind.Secondary, Glyphs.Watchlist);
+
         public OnerilerForm(IRecommendationService recommendations, IWatchlistService watchlist, IFormFactory forms, UserSession session)
+            : base("Size Önerilenler", "En çok izlediğiniz türden, henüz kiralamadığınız filmler.", Glyphs.Like, new Size(960, 560), new Size(760, 460), modal: true)
         {
             ArgumentNullException.ThrowIfNull(recommendations);
             ArgumentNullException.ThrowIfNull(watchlist);
@@ -35,27 +38,12 @@ namespace FilmKiralama.UI
             _watchlist = watchlist;
             _forms = forms;
             _session = session;
-            Prompts = new MessageBoxPrompts(this);
+            BuildLayout();
+            _write.HoldClosingOf(this);
 
-            Text = "Size Önerilenler";
-            Icon = AppAssets.Icon;
-            Font = new Font("Segoe UI", 10);
-            ClientSize = new Size(900, 480);
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            StartPosition = FormStartPosition.CenterParent;
-
-            _summary = new Label { Name = "lblOzet", Location = new Point(16, 16), Size = new Size(860, 26), Font = new Font("Segoe UI", 11, FontStyle.Bold), UseMnemonic = false };
-            _grid = new DataGridView
-            {
-                Name = "dgvOneriler",
-                Location = new Point(16, 50),
-                Size = new Size(868, 360),
-                RowHeadersVisible = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-            };
-            _grid.UseReadOnlyList();
-            _grid.SelectionChanged += (_, _) =>
+            btnKirala.Enabled = false;
+            btnListeyeEkle.Enabled = false;
+            dgvOneriler.SelectionChanged += (_, _) =>
             {
                 // Binding new rows is not a choice of the user.
                 if (!_binding)
@@ -63,47 +51,51 @@ namespace FilmKiralama.UI
                     UpdateButtons();
                 }
             };
-            _rent = new Button { Name = "btnKirala", Text = "Kirala", Location = new Point(574, 426), Size = new Size(150, 36), Enabled = false };
-            _add = new Button { Name = "btnListeyeEkle", Text = "Listeye Ekle", Location = new Point(734, 426), Size = new Size(150, 36), Enabled = false };
-            _rent.Click += async (_, _) => await RentSelectedAsync();
-            _add.Click += async (_, _) => await AddSelectedAsync();
-            Controls.AddRange([_summary, _grid, _rent, _add]);
+            btnKirala.Click += async (_, _) => await RentSelectedAsync();
+            btnListeyeEkle.Click += async (_, _) => await AddSelectedAsync();
         }
-
-        /// <summary>Confirmations and information; replaced in tests so no window opens.</summary>
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
 
         internal IReadOnlyList<CatalogItem> ShownFilms { get; private set; } = [];
 
-        internal CatalogItem? Selected => _grid.SelectedRows.Count == 1 && _grid.SelectedRows[0].DataBoundItem is FilmRowView row ? row.Item : null;
+        internal CatalogItem? Selected => dgvOneriler.SelectedRows.Count == 1 && dgvOneriler.SelectedRows[0].DataBoundItem is FilmRowView row ? row.Item : null;
 
         /// <summary>Loads the recommendations; only the latest request is shown and binding selects nothing.</summary>
         internal async Task LoadAsync()
         {
             var request = _loads.Next();
-            var films = await _recommendations.GetForMeAsync(_session);
-            if (!_loads.IsLatest(request) || IsDisposed)
-            {
-                return;
-            }
-
-            ShownFilms = films;
-            _binding = true;
+            dgvOneriler.IsLoading = true;
             try
             {
-                _grid.DataSource = films.Select(f => new FilmRowView(f)).ToList();
-                _grid.ClearSelection();
+                var films = await _recommendations.GetForMeAsync(_session);
+                if (!_loads.IsLatest(request) || IsDisposed)
+                {
+                    return;
+                }
+
+                ShownFilms = films;
+                _binding = true;
+                try
+                {
+                    dgvOneriler.DataSource = films.Select(f => new FilmRowView(f)).ToList();
+                    dgvOneriler.ClearSelection();
+                }
+                finally
+                {
+                    _binding = false;
+                }
+
+                lblOzet.Text = films.Count == 0
+                    ? "Henüz öneri yok: birkaç film kiraladıkça en çok izlediğiniz türden filmler burada görünür."
+                    : "En çok kiraladığınız türden, henüz kiralamadığınız ve şu anda kiralanabilen filmler:";
+                UpdateButtons();
             }
             finally
             {
-                _binding = false;
+                if (_loads.IsLatest(request) && !IsDisposed)
+                {
+                    dgvOneriler.IsLoading = false;
+                }
             }
-
-            _summary.Text = films.Count == 0
-                ? "Henüz öneri yok: birkaç film kiraladıkça en çok izlediğiniz türden filmler burada görünür."
-                : "En çok kiraladığınız türden, henüz kiralamadığınız ve şu anda kiralanabilen filmler:";
-            UpdateButtons();
         }
 
         /// <summary>Puts the selected film on the watchlist; ignored while another addition is running.</summary>
@@ -121,8 +113,8 @@ namespace FilmKiralama.UI
                     var added = await _watchlist.AddAsync(_session, item.Film.Id);
                     Prompts.Inform(added ? "Film izleme listenize eklendi." : "Film zaten izleme listenizde.");
                 },
-                _add,
-                _rent);
+                btnListeyeEkle,
+                btnKirala);
 
         protected override async void OnLoad(EventArgs e)
         {
@@ -132,28 +124,52 @@ namespace FilmKiralama.UI
 
         private async Task RentSelectedAsync()
         {
-            if (Selected is not { } item)
+            if (Selected is not { } item || _write.IsRunning)
             {
                 return;
             }
 
-            bool rented;
+            RentalReceipt? receipt;
             using (var form = _forms.Create<KiralamaForm>(_session, item.Film.Id))
             {
-                rented = form.ShowDialog(this) == DialogResult.OK;
+                receipt = form.ShowDialog(this) == DialogResult.OK ? form.Receipt : null;
             }
 
-            if (rented)
+            if (receipt is not null && !IsDisposed)
             {
                 await this.RunAsync(LoadAsync);
+                ShowStatus(StatusKind.Success, KiralamaForm.Confirmation(item.Film.Title, receipt));
             }
         }
 
         private void UpdateButtons()
         {
             var selected = Selected is not null;
-            _rent.Enabled = selected;
-            _add.Enabled = selected;
+            btnKirala.Enabled = selected;
+            btnListeyeEkle.Enabled = selected;
+        }
+
+        private void BuildLayout()
+        {
+            Name = nameof(OnerilerForm);
+            lblOzet.Font = Theme.Fonts.BodyStrong;
+            lblOzet.Margin = new Padding(0, 0, 0, Spacing.M);
+            dgvOneriler.EmptyText = "Öneri için önce birkaç film kiralayın.";
+            dgvOneriler.ColumnWeights = new Dictionary<string, float>
+            {
+                [nameof(FilmRowView.Title)] = 200,
+                [nameof(FilmRowView.Year)] = 60,
+                [nameof(FilmRowView.Director)] = 140,
+                [nameof(FilmRowView.Price)] = 120,
+            };
+            var card = FormLayout.Card("listCard", null, dgvOneriler);
+            card.Margin = Padding.Empty;
+            Content.Controls.Add(FormLayout.Page("listPage", (lblOzet, false), (card, true)));
+
+            AcceptButton = btnKirala;
+            SetFooterNote("Öneriler kiraladığınız filmlerden hesaplanır; en çok 8 film gösterilir.");
+            SetFooterButtons(btnKirala, btnListeyeEkle, CreateCloseButton("btnKapat"));
+            FinishLayout();
         }
 
         /// <summary>A recommended film as a row; texts are plain text in cells.</summary>
@@ -175,7 +191,7 @@ namespace FilmKiralama.UI
             public string Director => Item.Film.Director;
 
             [DisplayName("Puan")]
-            public string Rating => ReviewDisplay.Summary(Item.AverageRating, Item.RatingCount);
+            public string Rating => FilmText.Rating(Item.AverageRating, Item.RatingCount);
 
             [DisplayName("Günlük Ücret")]
             public string Price => DisplayFormat.Money(Item.Film.DailyPrice);

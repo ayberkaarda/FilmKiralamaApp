@@ -125,8 +125,38 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 
 ## 🖼️ Ekran Görüntüleri
 
-`screenshots/` klasöründeki ekran görüntüleri yeni tasarım için yeniden hazırlanıyor ve tasarımla birlikte geri
-gelecek. Önceki görüntüler üçüncü taraf film afişleri içerdiği için kaldırıldı.
+Ekranlar uydurma bir kiralama dükkânından, pencere açılmadan çizilir: uydurma film adları, yönetmenler ve hesaplar,
+example.com adresleri ve kodla çizilen afişler (renk geçişleri ve geometrik şekiller); bu yüzden gerçek bir film,
+afiş, stüdyo ya da kişi görünmez. Her görüntü 2x sürümüne bağlanır. Yeniden çizmek için:
+`dotnet run --project tools/Screenshots -c Release -- screenshots`.
+
+| | |
+|---|---|
+| [![Giriş](screenshots/giris.png)](screenshots/giris-2x.png)<br>Marka paneliyle **Giriş** | [![Kayıt Ol](screenshots/kayit-ol.png)](screenshots/kayit-ol-2x.png)<br>**Kayıt Ol** |
+| [![İlk Kurulum](screenshots/ilk-kurulum.png)](screenshots/ilk-kurulum-2x.png)<br>Kurulum anahtarıyla **İlk Kurulum** | [![Katalog](screenshots/katalog.png)](screenshots/katalog-2x.png)<br>**Katalog**: arama satırı, afiş kartları, stok etiketleri ve sayfalar |
+| [![Kiralama Ekranı](screenshots/kiralama.png)](screenshots/kiralama-2x.png)<br>Gün sayısı, toplam ve yorumlarla **Kiralama Ekranı** | [![Kullanıcı Profili](screenshots/profil.png)](screenshots/profil-2x.png)<br>**Kullanıcı Profili**: kiradaki filmler ve puanlanacak filmler |
+| [![Film Değerlendir](screenshots/degerlendirme.png)](screenshots/degerlendirme-2x.png)<br>İade edilen bir film için **Film Değerlendir** | [![İzleme Listem](screenshots/izleme-listesi.png)](screenshots/izleme-listesi-2x.png)<br>Her filmin durumuyla **İzleme Listem** |
+| [![Size Önerilenler](screenshots/oneriler.png)](screenshots/oneriler-2x.png)<br>**Size Önerilenler** | [![Yönetim Paneli](screenshots/yonetim-paneli.png)](screenshots/yonetim-paneli-2x.png)<br>**Yönetim Paneli**: film tablosu ve düzenleyici |
+| [![Kiralanan Filmler](screenshots/kiralanan-filmler.png)](screenshots/kiralanan-filmler-2x.png)<br>Her kiralamanın iade alınmasıyla **Kiralanan Filmler** | [![Kullanıcı Yönetimi](screenshots/hesaplar.png)](screenshots/hesaplar-2x.png)<br>**Kullanıcı Yönetimi** |
+| [![Yorum Yönetimi](screenshots/yorumlar.png)](screenshots/yorumlar-2x.png)<br>Gizlenmiş bir yorumla **Yorum Yönetimi** | [![Raporlar](screenshots/raporlar.png)](screenshots/raporlar-2x.png)<br>CSV dışa aktarmayla **Raporlar** |
+| [![Onay](screenshots/onay-penceresi.png)](screenshots/onay-penceresi-2x.png)<br>Bir film silinmeden önce **Onay** | |
+
+### Tasarım
+
+- **Kimlik:** özgün bir logo (kadife mor bir zemin üzerinde altın çizgili, açık bir klaket ve oynat işareti,
+  `assets/logo.svg`), mora çalan nötr tonlar üzerinde kadife mor vurgu ve altın sarısı işaret (puan yıldızları, raftaki
+  son kopya), Franklin Gothic Medium başlıklar (yüklü değilse Segoe UI Semibold) ve Segoe UI gövde metni. Afişi olmayan
+  film uygulamanın kendi yer tutucusunu (`assets/poster.svg`) gösterir. Üçüncü taraf marka, afiş ya da film adı
+  kullanılmaz.
+- **Temalar:** açık (varsayılan), koyu ve Windows yüksek karşıtlık. `appsettings.json` içindeki `Appearance:Theme`
+  `Light`, `Dark` ya da `System` (Windows uygulama modunu izler) alır; yüksek karşıtlık her zaman önceliklidir ve sistem
+  renklerini kullanır, seçili satırlar sistemin vurgu renklerindedir. Açık pencereler, uygulama çalışırken karşıtlık
+  ya da uygulama modu değişirse buna uyar.
+- **Yerleşim:** her ekran aynı çerçeveyi paylaşır (başlık, pencere içi mesaj şeridi, kayan gövde, eylemlerin
+  bulunduğu alt bilgi), monitör başına DPI uyumludur ve ekranının çalışma alanından büyük açılmaz. Sonuçlar ve kural
+  retleri pencerenin içinde gösterilir; yalnızca sorular temalı bir mesaj penceresi açar. Listeler ve tablolar
+  yüklenirken ve boş olduklarında bunu söyler; uzun film ve kullanıcı adları üç noktayla biter, bir durumu ya da
+  fiyatı asla gizlemez.
 
 ---
 
@@ -178,17 +208,18 @@ FilmKiralamaApp/
 │   ├── FilmKiralama.Domain/     # Varlıklar (User, Film, Rental, SetupKey) ve depo sözleşmeleri
 │   ├── FilmKiralama.Business/   # Giriş, kurulum, film, kiralama ve hesap servisleri, gecikme ücreti, Security/ (PBKDF2, kilitleme, kurulum anahtarı), Validation/ (FluentValidation), Auditing/
 │   ├── FilmKiralama.Data/       # EF Core DbContext, yapılandırmalar, Persistence/Migrations/, eski veritabanı yükseltmesi, film kilitleri, deneme verisi, depolar
-│   └── FilmKiralama.UI/         # WinForms ekranları, Infrastructure/ (hatalar, loglama, iletiler, yazma koruması, afiş yükleyici), Program.cs (bileşim kökü)
+│   └── FilmKiralama.UI/         # WinForms ekranları, Theming/ (paletler, yazı tipleri, temalı denetimler), Infrastructure/ (ekran çerçevesi, film kartları, hatalar, loglama, iletiler, yazma koruması, afiş yükleyici), Program.cs (bileşim kökü)
 ├── tests/
 │   ├── FilmKiralama.Business.Tests/  # Doğrulayıcılar, denetim kodları, şifre özeti, kilitleme, kiralama kuralları, gecikme ücreti ve sahiplik (Moq)
 │   ├── FilmKiralama.Data.Tests/      # SQLite üzerinde servisler; SQL Server üzerinde yarışlar, kurulum anahtarı ve eski veritabanı yükseltmesi
-│   └── FilmKiralama.UI.Tests/        # Yapılandırma, hatalar, loglar, afişler, odak ve yazma korumaları (pencere gösterilmez)
-├── assets/                      # Özgün logo, arka plan, giriş görseli, afiş yer tutucusu ve simge, SVG kaynaklarıyla
+│   └── FilmKiralama.UI.Tests/        # Yapılandırma, hatalar, loglar, afişler, odak, yazma korumaları, temalar, her ekranın yerleşimi ve sekme sırası (pencere gösterilmez)
+├── assets/                      # Özgün logo, simge ve afiş yer tutucusu, SVG kaynaklarıyla
+├── tools/Screenshots/           # Simge ve ekran görüntüsü aracı (pencere açmaz, uydurma veri, kodla çizilen afişler)
 ├── docs/
 │   ├── issue-setup-key.sql      # Kurulum anahtarı, veritabanı sahibi çalıştırır
 │   ├── grant-app-login.sql      # Uygulamanın kendi oturumunun yetkileri
 │   └── THREAT_MODEL.md          # Tehdit modeli
-├── screenshots/                 # Ekran görüntüleri (tasarım güncellemesiyle yeniden hazırlanacak)
+├── screenshots/                 # 1x ve 2x ekran görüntüleri
 ├── .github/workflows/ci.yml     # Derleme, test, SQL Server ve sürüm iş akışı
 ├── CHANGELOG.md
 └── FilmKiralama.sln
@@ -243,6 +274,9 @@ Bağlantı dizesi koda yazılmaz. `FilmKiralama` adlı bir bağlantı dizesi ver
      "Rental": {
        "DailyLateFee": 10.00,
        "MaxRentalDays": 365
+     },
+     "Appearance": {
+       "Theme": "Light"
      }
    }
    ```
@@ -265,7 +299,8 @@ Bağlantı dizesi koda yazılmaz. `FilmKiralama` adlı bir bağlantı dizesi ver
 
 `Rental` bölümü günlük gecikme ücretini (0-10.000, en fazla iki ondalık; JSON'da ondalık nokta ile yazılır) ve en
 uzun kiralama süresini gün olarak (1-3650) belirler. Bağlantı dizesi bulunamazsa ya da kiralama ayarları geçersizse
-uygulama sorunu belirten Türkçe bir mesaj gösterip kapanır.
+uygulama sorunu belirten Türkçe bir mesaj gösterip kapanır. `Appearance:Theme` paleti seçer: `Light` (varsayılan),
+`Dark` ya da `System`; başka bir değer `Light` olarak kabul edilir ve Windows yüksek karşıtlığı her zaman önceliklidir.
 
 ### 2. Çalıştırma
 
@@ -392,7 +427,7 @@ dotnet test -c Release
 |---|---|---|
 | `tests/FilmKiralama.Business.Tests` | Birim | Doğrulayıcı sınırları ve mesaj sırası (kullanıcı adı 3/32, şifre 8/64, e-posta, telefon, film alanları, kiralama günü, puan 0/1/5/6, yorum 500/501, arama ve sayfa sınırları, rapor dönemleri), denetim kodları, PBKDF2 ve biçim yükseltmesi, ortak saate göre kilit ve kiralama günleri, kiralama ve iade kuralları, gecikme ücreti, ortalama yuvarlama, CSV formül güvenliği, öneriler, sıkı Moq taklitleriyle sahiplik ve yönetici denetimleri |
 | `tests/FilmKiralama.Data.Tests` | Entegrasyon | Bellek içi SQLite üzerinde servisler ve depolar (rafta sıfır, bir ve tüm kopyalar, son kopya, ilk gecikme günü, IDOR cevapları, kilit süresi, eskimiş oturumlar, reddedilen girdinin hiçbir şey yazmaması, LIKE kaçışı, kararlı sayfalar, puan filtreleri, iade etmeden puanlama, başkasının yorumu ve liste kaydı, liste sınırı, rapor dönemleri); SQL Server üzerinde kiralama, kilitleme, yorum, izleme listesi ve saat yarışları, kısıtlı oturumla kurulum anahtarı ve eski veritabanı yükseltmesi |
-| `tests/FilmKiralama.UI.Tests` | Birim | Örnek yapılandırma, hata mesajları, log içeriği ve saklama süresi, afiş başlığı sınırları ve indirme yuvaları, IPv6 geçiş adresleri, kilit açıldıktan sonra odak, yazma korumaları, son isteğin kazandığı aramalar ve sayfalar, seçim yapmadan bağlanan listeler, düz metin yorumlar, CSV dosyaları, nötr marka |
+| `tests/FilmKiralama.UI.Tests` | Birim | Örnek yapılandırma, hata mesajları, log içeriği ve saklama süresi, afiş başlığı sınırları ve indirme yuvaları, IPv6 geçiş adresleri, kilit açıldıktan sonra odak, yazma korumaları, son isteğin kazandığı aramalar ve sayfalar, seçim yapmadan bağlanan listeler, düz metin yorumlar, CSV dosyaları, nötr marka; gösterilmeden kurulan her ekran: palet karşıtlığı, yüksek karşıtlık renkleri (pencereler açıkken açıldığında da), temalı denetimler, 1024x600, 1366x768 ve 1920x1040 çalışma alanlarında dört yazı boyutunda pencere içinde kalan yerleşim, sekme sırası ve pencere içi mesajlar |
 
 SQL Server testleri `FILM_TEST_SQLSERVER` ile verilen sunucuda geçici veritabanları kullanır (varsayılan: Windows
 kimlik doğrulamalı yerel SQL Express). `FILM_SKIP_SQL_TESTS=1` tanımlıysa ya da sunucuya ulaşılamıyorsa atlanır;
@@ -443,6 +478,9 @@ Hedef makinede .NET 10 Desktop Runtime gerekir. `appsettings.json` dosyasını `
   seçimle tetiklenen yüklemeler yalnızca son cevabın gösterilmesi için `RequestSequence` kullanmalıdır ve koddan
   yapılan veri bağlama kullanıcı seçimi sayılmamalıdır. Mesaj kutuları doğrudan `MessageBox` ile değil, `Dialogs`
   ya da `IUserPrompts` üzerinden açılır.
+- Yeni ekranlar `AppDialog` sınıfından türer, yerleşimlerini `FormLayout` ile kurar ve renkleri yalnızca
+  `Theme.Current` üzerinden okur (`Theming/`); `tests/FilmKiralama.UI.Tests` içindeki yerleşim testleri `TestForms`
+  listesindeki her ekranı üç çalışma alanında dört yazı boyutuyla kurar.
 - Denetim olayları yalnızca olay türü ve rol taşır; bunlara tanımlayıcı veri eklemeyin.
 
 ---

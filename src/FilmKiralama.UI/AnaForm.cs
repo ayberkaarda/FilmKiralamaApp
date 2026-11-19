@@ -1,34 +1,36 @@
-﻿using System.Drawing.Drawing2D;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Business.Watchlists;
 using FilmKiralama.Domain.Entities;
 using FilmKiralama.UI.Infrastructure;
+using FilmKiralama.UI.Theming;
 
 namespace FilmKiralama.UI
 {
     /// <summary>
-    /// The customer's film list: search by title, genre, year range, rating and availability page by page,
-    /// rent a film, open the profile.
+    /// The customer's catalog: poster cards of the films found by title, genre, year range, rating and
+    /// availability, page by page; rent a film or put it on the watchlist, and open the recommendations, the
+    /// watchlist and the profile. Signing out returns to the sign-in.
     /// </summary>
-    public partial class AnaForm : Form, ISignOutPanel
+    public sealed class AnaForm : AppDialog, ISignOutPanel
     {
-        private const int CardWidth = 240;
-        private const int CardHeight = 480;
-        private const int CardSpacing = 40;
-        private const int RowSpacing = 30;
-        private const int CardsPerRow = 4;
-
         private readonly IFilmService _films;
         private readonly IWatchlistService _watchlist;
         private readonly IFormFactory _forms;
         private readonly ExclusiveOperation _listing = new();
         private readonly UserSession _session;
         private readonly RequestSequence _loads = new();
-        private readonly CatalogSearchBar _search;
-        private readonly Pager _pager;
-        private readonly Panel _scrollPanel;
+        private readonly CatalogSearchBar _search = new(availableOnly: true);
+        private readonly Pager _pager = new();
+        private readonly CardGrid _grid = new() { Name = "pnlFilmler" };
+        private readonly ToolTip _tips = new();
+
+        private readonly ThemedButton btnOneriler = FormLayout.Button(nameof(btnOneriler), "Öneriler", ButtonKind.Secondary, Glyphs.Like);
+        private readonly ThemedButton btnIzlemeListesi = FormLayout.Button(nameof(btnIzlemeListesi), "İzleme listem", ButtonKind.Secondary, Glyphs.Watchlist);
+        private readonly ThemedButton btnProfil = FormLayout.Button(nameof(btnProfil), "Profilim", ButtonKind.Secondary, Glyphs.Person);
+        private readonly ThemedButton btnCikis = FormLayout.Button(nameof(btnCikis), "Çıkış yap", ButtonKind.Secondary, Glyphs.SignOut);
 
         public AnaForm(IFilmService films, IWatchlistService watchlist, IFormFactory forms, UserSession session)
+            : base("Katalog", "Merhaba, " + AppText.DisplayName(session?.UserName ?? string.Empty) + ". Bugün ne izlemek istersiniz?", Glyphs.Video, new Size(1200, 780), new Size(860, 600))
         {
             ArgumentNullException.ThrowIfNull(films);
             ArgumentNullException.ThrowIfNull(watchlist);
@@ -39,49 +41,22 @@ namespace FilmKiralama.UI
             _watchlist = watchlist;
             _forms = forms;
             _session = session;
-            Prompts = new MessageBoxPrompts(this);
-
-            InitializeComponent();
-            Icon = AppAssets.Icon;
-            BackgroundImage = AppAssets.Background;
-            DoubleBuffered = true;
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            MaximumSize = Size;
-            MinimumSize = Size;
-
-            var header = BuildHeader();
-            var filterPanel = new Panel
-            {
-                Size = new Size(ClientSize.Width, 60),
-                Location = new Point(0, header.Bottom + 10),
-                BackgroundImage = AppAssets.Background,
-            };
-            Controls.Add(filterPanel);
-            _search = new CatalogSearchBar(new Point(20, 4), Color.White, availableOnly: true);
-            filterPanel.Controls.Add(_search);
-            _pager = new Pager(filterPanel, new Point(ClientSize.Width - 520, 22));
+            BuildLayout();
 
             // A new search starts on its first page; another page keeps the search.
             _search.Changed += async (_, _) => await this.RunAsync(() => LoadFilmsAsync(1));
             _pager.PageRequested += async (_, page) => await this.RunAsync(() => LoadFilmsAsync(page));
-
-            _scrollPanel = new Panel
-            {
-                BackgroundImage = AppAssets.Background,
-                BackgroundImageLayout = ImageLayout.Stretch,
-                Location = new Point(0, filterPanel.Bottom + 10),
-                AutoScroll = true,
-            };
-            _scrollPanel.Size = new Size(ClientSize.Width, ClientSize.Height - _scrollPanel.Top);
-            Controls.Add(_scrollPanel);
+            btnOneriler.Click += async (_, _) => await OpenAndRefreshAsync<OnerilerForm>();
+            btnIzlemeListesi.Click += async (_, _) => await OpenAndRefreshAsync<IzlemeListesiForm>();
+            btnProfil.Click += async (_, _) => await OpenAndRefreshAsync<KullaniciProfil>();
+            btnCikis.Click += (_, _) => SignOut();
         }
 
         public bool SignedOut { get; private set; }
 
-        /// <summary>Confirmations and information; replaced in tests so no window opens.</summary>
+        /// <summary>Shows the posters of the cards; replaced by the screenshot tool so no download starts.</summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
+        internal PosterLoader Posters { get; set; } = PosterLoader.Default;
 
         /// <summary>The film cards shown now, for tests.</summary>
         internal IReadOnlyList<Film> ShownFilms => ShownPage?.Items.Select(i => i.Film).ToList() ?? [];
@@ -121,15 +96,26 @@ namespace FilmKiralama.UI
         internal async Task LoadFilmsAsync(int page = 1)
         {
             var request = _loads.Next();
-            var result = await _films.SearchCatalogAsync(_session, _search.Current with { Page = page });
-            if (!_loads.IsLatest(request) || IsDisposed)
+            _grid.IsLoading = true;
+            try
             {
-                return;
-            }
+                var result = await _films.SearchCatalogAsync(_session, _search.Current with { Page = page });
+                if (!_loads.IsLatest(request) || IsDisposed)
+                {
+                    return;
+                }
 
-            ShownPage = result;
-            _pager.Show(result.Page, result.PageCount, result.TotalCount, "film");
-            ShowFilms(result.Items);
+                ShownPage = result;
+                _pager.Show(result.Page, result.PageCount, result.TotalCount, "film");
+                ShowFilms(result.Items);
+            }
+            finally
+            {
+                if (_loads.IsLatest(request) && !IsDisposed)
+                {
+                    _grid.IsLoading = false;
+                }
+            }
         }
 
         protected override async void OnLoad(EventArgs e)
@@ -138,227 +124,100 @@ namespace FilmKiralama.UI
             await this.RunAsync(RefreshAsync);
         }
 
-        private Panel BuildHeader()
+        protected override void Dispose(bool disposing)
         {
-            var headerColor = ColorTranslator.FromHtml("#2a2a3b");
-            var header = new Panel { Size = new Size(ClientSize.Width, 50), BackColor = headerColor };
-            Controls.Add(header);
-
-            header.Controls.Add(new Label
+            if (disposing)
             {
-                Text = "Merhaba, " + AppText.DisplayName(_session.UserName),
-                ForeColor = Color.White,
-                BackColor = headerColor,
-                Font = new Font("Segoe UI", 12, FontStyle.Bold),
-                Location = new Point(10, 15),
-                Size = new Size(500, 30),
-            });
+                _tips.Dispose();
+            }
 
-            var profile = new Button
-            {
-                Text = "Profil",
-                Size = new Size(100, 30),
-                Location = new Point(header.Width - 230, 10),
-                BackColor = Color.LightSeaGreen,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-            };
-            profile.Click += async (_, _) =>
-            {
-                using (var form = _forms.Create<KullaniciProfil>(_session))
-                {
-                    form.ShowDialog(this);
-                }
+            base.Dispose(disposing);
+        }
 
-                // A return in the profile puts a copy back on the shelf; a rating changes an average.
+        private void SignOut()
+        {
+            if (Prompts.Confirm("Çıkış yapmak istediğinizden emin misiniz?"))
+            {
+                SignedOut = true;
+                Close();
+            }
+        }
+
+        /// <summary>Opens a screen of the session; a return, a rating or a rental there changes the catalog.</summary>
+        private async Task OpenAndRefreshAsync<T>()
+            where T : Form
+        {
+            using (var form = _forms.Create<T>(_session))
+            {
+                form.ShowDialog(this);
+            }
+
+            if (!IsDisposed)
+            {
                 await this.RunAsync(RefreshAsync);
-            };
-            header.Controls.Add(profile);
+            }
+        }
 
-            var watchlist = new Button
+        private async Task RentAsync(CatalogItem item)
+        {
+            RentalReceipt? receipt;
+            using (var form = _forms.Create<KiralamaForm>(_session, item.Film.Id))
             {
-                Name = "btnIzlemeListesi",
-                Text = "İzleme Listem",
-                Size = new Size(120, 30),
-                Location = new Point(header.Width - 360, 10),
-                BackColor = Color.SteelBlue,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-            };
-            watchlist.Click += async (_, _) =>
-            {
-                using (var form = _forms.Create<IzlemeListesiForm>(_session))
-                {
-                    form.ShowDialog(this);
-                }
+                receipt = form.ShowDialog(this) == DialogResult.OK ? form.Receipt : null;
+            }
 
-                // A rental from the list takes a copy off the shelf.
-                await this.RunAsync(RefreshAsync);
-            };
-            header.Controls.Add(watchlist);
-
-            var recommendations = new Button
+            if (receipt is not null && !IsDisposed)
             {
-                Name = "btnOneriler",
-                Text = "Öneriler",
-                Size = new Size(120, 30),
-                Location = new Point(header.Width - 490, 10),
-                BackColor = Color.DarkSlateBlue,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-            };
-            recommendations.Click += async (_, _) =>
-            {
-                using (var form = _forms.Create<OnerilerForm>(_session))
-                {
-                    form.ShowDialog(this);
-                }
-
-                // A rental from the recommendations takes a copy off the shelf.
-                await this.RunAsync(RefreshAsync);
-            };
-            header.Controls.Add(recommendations);
-
-            var signOut = new Button
-            {
-                Text = "Çıkış Yap",
-                Size = new Size(100, 30),
-                Location = new Point(header.Width - 110, 10),
-                BackColor = Color.IndianRed,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-            };
-            signOut.Click += (_, _) =>
-            {
-                if (Prompts.Confirm("Çıkış yapmak istediğinizden emin misiniz?"))
-                {
-                    SignedOut = true;
-                    Close();
-                }
-            };
-            header.Controls.Add(signOut);
-            return header;
+                ShowStatus(StatusKind.Success, KiralamaForm.Confirmation(item.Film.Title, receipt));
+                await this.RunAsync(() => LoadFilmsAsync(ShownPage?.Page ?? 1));
+            }
         }
 
         private void ShowFilms(IReadOnlyList<CatalogItem> films)
         {
-            var addButtons = new List<Button>();
-            _scrollPanel.SuspendLayout();
-            try
+            var cards = new List<PosterCard>();
+            foreach (var item in films)
             {
-                foreach (Control old in _scrollPanel.Controls.Cast<Control>().ToList())
-                {
-                    old.Dispose();
-                }
-
-                var rowWidth = (CardsPerRow * (CardWidth + CardSpacing)) - CardSpacing;
-                var left = (ClientSize.Width - rowWidth) / 2;
-                for (var i = 0; i < films.Count; i++)
-                {
-                    var card = BuildCard(films[i]);
-                    addButtons.AddRange(card.Controls.OfType<Button>().Where(b => b.Name == "btnListeyeEkle"));
-                    card.Location = new Point(
-                        left + (i % CardsPerRow * (CardWidth + CardSpacing)),
-                        10 + (i / CardsPerRow * (CardHeight + RowSpacing)) + _scrollPanel.AutoScrollPosition.Y);
-                    _scrollPanel.Controls.Add(card);
-                }
-            }
-            finally
-            {
-                _scrollPanel.ResumeLayout();
+                var card = new PosterCard(item);
+                var current = item;
+                card.Rent.Click += async (_, _) => await RentAsync(current);
+                card.AddToList.Click += async (_, _) => await AddToWatchlistAsync(current.Film.Id);
+                _tips.SetToolTip(card.AddToList, "İzleme listesine ekle");
+                Posters.Show(card.Poster, item.Film.ImageUrl);
+                cards.Add(card);
             }
 
-            WatchlistButtons = addButtons;
+            _grid.SetItems(cards);
+            WatchlistButtons = [.. cards.Select(c => c.AddToList)];
         }
 
-        private Panel BuildCard(CatalogItem item)
+        private void BuildLayout()
         {
-            var film = item.Film;
-            var card = new Panel
-            {
-                Size = new Size(CardWidth, CardHeight),
-                BackColor = ColorTranslator.FromHtml("#2a2a3b"),
-                Padding = new Padding(0),
-            };
-            card.Region = Rounded(card.Size, 20);
+            Name = nameof(AnaForm);
+            var toolbar = FormLayout.Bar(
+                "toolbar",
+                (btnOneriler, false),
+                (btnIzlemeListesi, false),
+                (btnProfil, false),
+                (FormLayout.Spacer(), true),
+                (_pager, false));
+            toolbar.Margin = new Padding(0, 0, 0, Spacing.M);
+            btnOneriler.Margin = new Padding(0, 0, Spacing.S, 0);
+            btnIzlemeListesi.Margin = new Padding(0, 0, Spacing.S, 0);
+            btnProfil.Margin = new Padding(0, 0, Spacing.L, 0);
 
-            var poster = new PictureBox
-            {
-                Size = new Size(240, 320),
-                Location = new Point(0, 0),
-                SizeMode = PictureBoxSizeMode.StretchImage,
-            };
-            poster.ShowPoster(film.ImageUrl);
-            card.Controls.Add(poster);
+            var searchCard = FormLayout.Card("searchCard", null, _search, fill: false);
+            searchCard.Padding = new Padding(Spacing.L, Spacing.M, Spacing.L, Spacing.XS);
+            searchCard.Margin = new Padding(0, 0, 0, Spacing.L);
 
-            card.Controls.Add(new Label
-            {
-                Size = new Size(220, 92),
-                Location = new Point(10, 324),
-                Text = $"{film.Title}\nYönetmen: {film.Director}\n{film.Year} | {film.Genre} | {DisplayFormat.Money(film.DailyPrice)}\n"
-                    + "Puan: " + ReviewDisplay.Summary(item.AverageRating, item.RatingCount),
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                ForeColor = Color.White,
-                UseMnemonic = false,
-            });
+            _grid.EmptyText = "Aramanıza uyan film bulunamadı. Filtreleri gevşetin ya da \"Yalnızca müsait\" seçeneğini kapatın.";
+            _grid.MinimumSize = new Size(0, 280);
+            Content.Controls.Add(FormLayout.Page("catalogPage", (toolbar, false), (searchCard, false), (_grid, true)));
 
-            var rent = new Button
-            {
-                Name = "btnKirala",
-                Text = item.IsAvailable ? "Kirala" : "Stokta yok",
-                Enabled = item.IsAvailable,
-                Size = new Size(105, 36),
-                Location = new Point(10, 420),
-                Font = new Font("Segoe UI", 10, FontStyle.Bold),
-                BackColor = ColorTranslator.FromHtml("#3cb371"),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                Padding = new Padding(0),
-            };
-            rent.FlatAppearance.BorderSize = 0;
-            rent.Region = Rounded(rent.Size, 20);
-            var filmId = film.Id;
-            rent.Click += async (_, _) =>
-            {
-                bool rented;
-                using (var form = _forms.Create<KiralamaForm>(_session, filmId))
-                {
-                    rented = form.ShowDialog(this) == DialogResult.OK;
-                }
-
-                if (rented)
-                {
-                    await this.RunAsync(() => LoadFilmsAsync(ShownPage?.Page ?? 1));
-                }
-            };
-            card.Controls.Add(rent);
-
-            var add = new Button
-            {
-                Name = "btnListeyeEkle",
-                Text = "Listeye Ekle",
-                Size = new Size(105, 36),
-                Location = new Point(CardWidth - 115, 420),
-                Font = new Font("Segoe UI", 9, FontStyle.Bold),
-                BackColor = Color.SteelBlue,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-            };
-            add.FlatAppearance.BorderSize = 0;
-            add.Region = Rounded(add.Size, 20);
-            add.Click += async (_, _) => await AddToWatchlistAsync(filmId);
-            card.Controls.Add(add);
-            return card;
-        }
-
-        private static Region Rounded(Size size, int radius)
-        {
-            using var path = new GraphicsPath();
-            path.AddArc(0, 0, radius, radius, 180, 90);
-            path.AddArc(size.Width - radius, 0, radius, radius, 270, 90);
-            path.AddArc(size.Width - radius, size.Height - radius, radius, radius, 0, 90);
-            path.AddArc(0, size.Height - radius, radius, radius, 90, 90);
-            return new Region(path);
+            CancelButton = btnCikis;
+            SetFooterNote("Kirala ile kiralama ekranı açılır; yıldızlı liste düğmesi filmi izleme listenize ekler.");
+            SetFooterButtons(btnCikis);
+            FinishLayout();
         }
     }
 }

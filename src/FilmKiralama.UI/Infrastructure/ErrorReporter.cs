@@ -9,8 +9,9 @@ using Serilog;
 namespace FilmKiralama.UI.Infrastructure;
 
 /// <summary>
-/// Turns exceptions into short, user friendly Turkish messages and writes what may be logged about them
-/// (see <see cref="Record"/>) to the log file.
+/// Turns exceptions into short, user friendly Turkish messages, shown inline on a screen with a message
+/// strip and in a message window otherwise, and writes what may be logged about them (see
+/// <see cref="Record"/>) to the log file.
 /// </summary>
 internal static class ErrorReporter
 {
@@ -41,10 +42,23 @@ internal static class ErrorReporter
 
         Record(Log.Logger, exception);
 
-        // Rule and permission messages are fixed texts written for the user; they are shown as warnings.
+        // Rule and permission messages are fixed texts written for the user; they are shown as warnings,
+        // inline on a screen with a message strip and in a message window otherwise.
         if (IsRefusal(exception))
         {
+            if (owner is IStatusSurface surface)
+            {
+                surface.ShowStatus(Theming.StatusKind.Warning, exception.Message);
+                return;
+            }
+
             Dialogs.Show(owner, exception.Message, "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        if (owner is IStatusSurface screen)
+        {
+            screen.ShowStatus(Theming.StatusKind.Error, Describe(exception));
             return;
         }
 

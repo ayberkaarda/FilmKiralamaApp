@@ -57,7 +57,10 @@ public sealed class FocusTests
         Assert.Empty(password.Text);
         Assert.True(Find<Control>(form, "btnGiris2").Enabled);
         Assert.True(password.ContainsFocus || form.ActiveControl == password);
-        Assert.Contains(NoDialogs.Requested, r => r.Contains("Kullanıcı adı veya şifre hatalı.", StringComparison.Ordinal));
+
+        // The refusal is shown in the window's message strip, not in a message window.
+        Assert.Equal("Kullanıcı adı veya şifre hatalı.", form.StatusBar.Text);
+        Assert.True(form.StatusBar.IsShown);
     });
 
     private static void CreateHandles(Control control)

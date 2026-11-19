@@ -1,23 +1,29 @@
 using FilmKiralama.Business.Services;
 using FilmKiralama.Domain.Entities;
 using FilmKiralama.UI.Infrastructure;
+using FilmKiralama.UI.Theming;
 
 namespace FilmKiralama.UI
 {
-    /// <summary>The admin's list of every active rental, filtered by genre, year and director, with the return of each.</summary>
-    public partial class KiralananFilmlerPanel : Form
+    /// <summary>The admin's list of every active rental as cards, filtered by genre, year and director, with the return of each.</summary>
+    public sealed class KiralananFilmlerPanel : AppDialog
     {
         private readonly IRentalService _rentals;
         private readonly IFilmService _films;
         private readonly UserSession _session;
         private readonly ExclusiveOperation _return = new();
         private readonly RequestSequence _loads = new();
-        private readonly Panel _filterPanel;
         private readonly FilmFilterBoxes _filter;
-        private readonly Panel _listPanel;
         private FilmFilter _applied = FilmFilter.None;
 
+        private readonly ThemedComboBox cbTur = FormLayout.Picker(nameof(cbTur), 150);
+        private readonly ThemedComboBox cbYil = FormLayout.Picker(nameof(cbYil), 100);
+        private readonly ThemedComboBox cbYonetmen = FormLayout.Picker(nameof(cbYonetmen), 170);
+        private readonly ThemedButton btnFiltrele = FormLayout.Button(nameof(btnFiltrele), "Filtrele", ButtonKind.Primary, Glyphs.Filter);
+        private readonly CardGrid pnlKiralamalar = new() { Name = nameof(pnlKiralamalar), ItemWidth = 360 };
+
         public KiralananFilmlerPanel(IRentalService rentals, IFilmService films, UserSession session)
+            : base("Kiralanan Filmler", "Kiradaki bütün filmler; geri gelen kopyayı buradan iade alın.", Glyphs.List, new Size(1120, 700), new Size(860, 540), modal: true)
         {
             ArgumentNullException.ThrowIfNull(rentals);
             ArgumentNullException.ThrowIfNull(films);
@@ -26,26 +32,15 @@ namespace FilmKiralama.UI
             _rentals = rentals;
             _films = films;
             _session = session;
-            Prompts = new MessageBoxPrompts(this);
-
-            InitializeComponent();
-            Icon = AppAssets.Icon;
-            BackgroundImage = AppAssets.Background;
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            MaximumSize = Size;
-            MinimumSize = Size;
-
-            _listPanel = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
-            Controls.Add(_listPanel);
-            (_filterPanel, _filter) = BuildFilterPanel();
-            // The filling list docks last, below the filter bar.
-            Controls.SetChildIndex(_listPanel, 0);
+            _filter = new FilmFilterBoxes(cbTur, cbYonetmen, cbYil);
+            BuildLayout();
+            _return.HoldClosingOf(this);
+            btnFiltrele.Click += async (_, _) => await this.RunAsync(ApplyFilterAsync);
         }
 
-        /// <summary>Confirmations and information; replaced in tests so no window opens.</summary>
+        /// <summary>Shows the posters of the rentals; replaced by the screenshot tool so no download starts.</summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
+        internal PosterLoader Posters { get; set; } = PosterLoader.Default;
 
         internal IReadOnlyList<RentalDetails> ShownRentals { get; private set; } = [];
 
@@ -63,10 +58,21 @@ namespace FilmKiralama.UI
         internal async Task LoadRentalsAsync()
         {
             var request = _loads.Next();
-            var rentals = await _rentals.GetActiveRentalsAsync(_session, _applied);
-            if (_loads.IsLatest(request) && !IsDisposed)
+            pnlKiralamalar.IsLoading = true;
+            try
             {
-                ShowRentals(rentals);
+                var rentals = await _rentals.GetActiveRentalsAsync(_session, _applied);
+                if (_loads.IsLatest(request) && !IsDisposed)
+                {
+                    ShowRentals(rentals);
+                }
+            }
+            finally
+            {
+                if (_loads.IsLatest(request) && !IsDisposed)
+                {
+                    pnlKiralamalar.IsLoading = false;
+                }
             }
         }
 
@@ -106,7 +112,7 @@ namespace FilmKiralama.UI
                         : "Kiralama iade alındı.");
                     await LoadRentalsAsync();
                 },
-                [.. ReturnButtons]);
+                [.. ReturnButtons, btnFiltrele]);
             return returned;
         }
 
@@ -116,106 +122,44 @@ namespace FilmKiralama.UI
             await this.RunAsync(RefreshAsync);
         }
 
-        private (Panel Panel, FilmFilterBoxes Filter) BuildFilterPanel()
-        {
-            var panel = new Panel
-            {
-                Size = new Size(Width, 60),
-                Dock = DockStyle.Top,
-                BackColor = Color.FromArgb(245, 245, 245),
-                BorderStyle = BorderStyle.FixedSingle,
-            };
-            Controls.Add(panel);
-
-            var genre = new ComboBox { Name = "cbTur", Location = new Point(60, 15), Width = 120 };
-            var year = new ComboBox { Name = "cbYil", Location = new Point(260, 15), Width = 120 };
-            var director = new ComboBox { Name = "cbYonetmen", Location = new Point(490, 15), Width = 120 };
-            var apply = new Button
-            {
-                Text = "Filtrele",
-                Location = new Point(640, 12),
-                Size = new Size(100, 30),
-                BackColor = Color.SteelBlue,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-            };
-            apply.Click += async (_, _) => await this.RunAsync(ApplyFilterAsync);
-
-            panel.Controls.AddRange(
-            [
-                new Label { Text = "Tür:", Location = new Point(10, 20), Size = new Size(50, 15), ForeColor = Color.Black },
-                genre,
-                new Label { Text = "Yıl:", Location = new Point(200, 20), Size = new Size(58, 15), ForeColor = Color.Black },
-                year,
-                new Label { Text = "Yönetmen:", Location = new Point(410, 20), Size = new Size(80, 15), ForeColor = Color.Black },
-                director,
-                apply,
-            ]);
-            return (panel, new FilmFilterBoxes(genre, director, year));
-        }
-
         private void ShowRentals(IReadOnlyList<RentalDetails> rentals)
         {
             ShownRentals = rentals;
-            var buttons = new List<Button>();
-            _listPanel.SuspendLayout();
-            try
+            var cards = new List<RentalCard>();
+            foreach (var rental in rentals)
             {
-                foreach (Control old in _listPanel.Controls.Cast<Control>().ToList())
-                {
-                    old.Dispose();
-                }
-
-                var top = 20 + _listPanel.AutoScrollPosition.Y;
-                for (var i = 0; i < rentals.Count; i++)
-                {
-                    var rental = rentals[i];
-                    var card = new Panel
-                    {
-                        Size = new Size(600, 220),
-                        Location = new Point(i % 2 == 0 ? 20 : 650, top + (i / 2 * 240)),
-                        BackColor = Color.FromArgb(230, 230, 230),
-                    };
-
-                    var poster = new PictureBox { Size = new Size(150, 220), Location = new Point(0, 0), SizeMode = PictureBoxSizeMode.StretchImage };
-                    poster.ShowPoster(rental.ImageUrl);
-                    card.Controls.Add(poster);
-
-                    card.Controls.Add(new Label
-                    {
-                        Location = new Point(180, 20),
-                        Size = new Size(235, 190),
-                        Font = new Font("Segoe UI", 10, FontStyle.Bold),
-                        ForeColor = Color.Black,
-                        Text = $"Ad: {rental.FilmTitle}\n\n"
-                            + $"Alış Tarihi: {DisplayFormat.Date(rental.RentedOn)}\n\n"
-                            + $"İade Tarihi: {DisplayFormat.Date(rental.DueOn)}\n\n"
-                            + $"Toplam Ücret: {DisplayFormat.Money(rental.Price)}\n\n"
-                            + $"Kiracı: {rental.UserName} (ID: {rental.UserId})",
-                    });
-
-                    var returnButton = new Button
-                    {
-                        Text = "İade Al",
-                        Size = new Size(150, 40),
-                        Location = new Point(420, 150),
-                        BackColor = Color.IndianRed,
-                        ForeColor = Color.White,
-                        FlatStyle = FlatStyle.Flat,
-                    };
-                    var current = rental;
-                    returnButton.Click += async (_, _) => await ReturnAsync(current);
-                    card.Controls.Add(returnButton);
-                    buttons.Add(returnButton);
-                    _listPanel.Controls.Add(card);
-                }
-            }
-            finally
-            {
-                _listPanel.ResumeLayout();
+                var card = new RentalCard(rental, "İade al", showTenant: true);
+                var current = rental;
+                card.Action.Click += async (_, _) => await ReturnAsync(current);
+                Posters.Show(card.Poster, rental.ImageUrl);
+                cards.Add(card);
             }
 
-            ReturnButtons = buttons;
+            pnlKiralamalar.SetItems(cards);
+            ReturnButtons = [.. cards.Select(c => c.Action)];
+        }
+
+        private void BuildLayout()
+        {
+            Name = nameof(KiralananFilmlerPanel);
+            var filters = FormLayout.FieldRow(
+                "filterRow",
+                (FormLayout.Field("&Tür", cbTur), 30),
+                (FormLayout.Field("&Yıl", cbYil), 20),
+                (FormLayout.Field("Yö&netmen", cbYonetmen), 34),
+                (FormLayout.FieldAction(btnFiltrele), 0));
+            var filterCard = FormLayout.Card("filterCard", null, filters, fill: false);
+            filterCard.Padding = new Padding(Spacing.L, Spacing.M, Spacing.L, Spacing.XS);
+            filterCard.Margin = new Padding(0, 0, 0, Spacing.L);
+
+            pnlKiralamalar.EmptyText = "Seçilen filtreye uyan, kirada bir film yok.";
+            pnlKiralamalar.MinimumSize = new Size(0, 220);
+            Content.Controls.Add(FormLayout.Page("rentalsPage", (filterCard, false), (pnlKiralamalar, true)));
+
+            AcceptButton = btnFiltrele;
+            SetFooterNote("İade alınan kopya rafa döner; geciken kiralamada gecikme ücreti önce gösterilir.");
+            SetFooterButtons(CreateCloseButton("btnKapat"));
+            FinishLayout();
         }
     }
 }

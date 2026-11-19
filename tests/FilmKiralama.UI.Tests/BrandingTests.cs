@@ -13,12 +13,13 @@ public sealed class BrandingTests
         var resources = typeof(AppAssets).Assembly.GetManifestResourceNames().Order(StringComparer.Ordinal).ToList();
 
         Assert.Equal(
-            ["FilmKiralama.UI.Assets.app.ico", "FilmKiralama.UI.Assets.background.png", "FilmKiralama.UI.Assets.hero.png", "FilmKiralama.UI.Assets.logo.png", "FilmKiralama.UI.Assets.poster.png"],
+            ["FilmKiralama.UI.Assets.app.ico", "FilmKiralama.UI.Assets.logo-256.png", "FilmKiralama.UI.Assets.poster.png"],
             resources.Where(r => r.Contains(".Assets.", StringComparison.Ordinal)));
-        Assert.DoesNotContain(resources, r => r.EndsWith(".resources", StringComparison.Ordinal) && !r.Contains("ReaLTaiizor", StringComparison.Ordinal));
-        Assert.Equal(new Size(545, 737), AppAssets.Hero.Size);
-        Assert.Equal(new Size(240, 320), AppAssets.Poster.Size);
-        Assert.Equal(256, AppAssets.Logo.Width);
+        Assert.DoesNotContain(resources, r => r.EndsWith(".resources", StringComparison.Ordinal));
+
+        // The placeholder has the 2:3 shape of a poster, at the largest size a downloaded poster is kept at.
+        Assert.Equal(new Size(PosterLoader.MaxShownWidth, PosterLoader.MaxShownHeight), AppAssets.Poster.Size);
+        Assert.Equal(new Size(256, 256), AppAssets.Logo.Size);
         Assert.NotNull(AppAssets.Icon);
     }
 
@@ -50,7 +51,7 @@ public sealed class BrandingTests
         try
         {
             Assert.Equal(
-                ["Film Kiralama", "Kayıt Ol", "Şifre Değiştir", "Film Kirala", "Kiralama Ekranı", "Kullanıcı Profili", "Yönetim Paneli", "Kiralanan Filmler", "Film Değerlendir", "Yorum Yönetimi", "İzleme Listem", "Raporlar", "Size Önerilenler"],
+                ["Film Kiralama - Giriş", "Film Kiralama - Kayıt Ol", "Film Kiralama - Şifre Değiştir", "Film Kiralama - Katalog", "Film Kiralama - Kiralama Ekranı", "Film Kiralama - Kullanıcı Profili", "Film Kiralama - Yönetim Paneli", "Film Kiralama - Kiralanan Filmler", "Film Kiralama - Film Değerlendir", "Film Kiralama - Yorum Yönetimi", "Film Kiralama - İzleme Listem", "Film Kiralama - Raporlar", "Film Kiralama - Size Önerilenler"],
                 all.Select(f => f.Text));
             Assert.All(all, f => Assert.NotNull(f.Icon));
         }

@@ -1,65 +1,42 @@
 using System.Globalization;
 using FilmKiralama.Business.Validation;
 using FilmKiralama.Domain.Entities;
+using FilmKiralama.UI.Theming;
 
 namespace FilmKiralama.UI.Infrastructure;
 
 /// <summary>
-/// The search fields of the film lists: title, genre, year range, minimum rating and "available only".
-/// Filling the choices is not a user choice: no change is reported while they are replaced, and the
-/// previous choices are kept when they still exist. Typing in the title is reported once the typing
-/// pauses for <see cref="TitleDelay"/> (or at Enter), not on every key, so the database is not asked
-/// once per character; any other change is reported at once and includes the title typed so far.
+/// The search fields of the film lists in one row: title, genre, year range, minimum rating and "available
+/// only". Filling the choices is not a user choice: no change is reported while they are replaced, and the
+/// previous choices are kept when they still exist. Typing in the title is reported once the typing pauses
+/// for <see cref="TitleDelay"/> (or at Enter), not on every key, so the database is not asked once per
+/// character; any other change is reported at once and includes the title typed so far.
 /// </summary>
-internal sealed class CatalogSearchBar : Panel
+internal sealed class CatalogSearchBar : TableLayoutPanel
 {
     /// <summary>Pause in typing after which the title is searched.</summary>
     public static readonly TimeSpan TitleDelay = TimeSpan.FromMilliseconds(300);
 
     private readonly System.Windows.Forms.Timer _titleTimer = new() { Interval = (int)TitleDelay.TotalMilliseconds };
-    private readonly TextBox _title;
-    private readonly ComboBox _genre;
-    private readonly ComboBox _yearFrom;
-    private readonly ComboBox _yearTo;
-    private readonly ComboBox _rating;
-    private readonly CheckBox _availableOnly;
+    private readonly TextBox _title = new() { Name = "txtAra", MaxLength = InputRules.TitleMaxLength };
+    private readonly ThemedComboBox _genre = FormLayout.Picker("turCombo", 150);
+    private readonly ThemedComboBox _yearFrom = FormLayout.Picker("yilBaslangicCombo", 96);
+    private readonly ThemedComboBox _yearTo = FormLayout.Picker("yilBitisCombo", 96);
+    private readonly ThemedComboBox _rating = FormLayout.Picker("puanCombo", 120);
+    private readonly ThemedCheckBox _availableOnly = new() { Name = "chkMusait", Text = "Yalnızca &müsait" };
     private bool _filling;
 
-    /// <summary>The fields in one row at <paramref name="location"/>, captions above them.</summary>
-    public CatalogSearchBar(Point location, Color captionColor, bool availableOnly)
+    public CatalogSearchBar(bool availableOnly)
     {
         Name = "pnlArama";
-        Location = location;
-        Size = new Size(840, 50);
-        BackColor = Color.Transparent;
-        var origin = Point.Empty;
-
-        Label Caption(string text, int x) => new()
-        {
-            Text = text,
-            Location = new Point(origin.X + x, origin.Y),
-            AutoSize = true,
-            Font = new Font("Segoe UI", 9, FontStyle.Bold),
-            ForeColor = captionColor,
-            BackColor = Color.Transparent,
-        };
-
-        var top = origin.Y + 20;
-        _title = new TextBox { Name = "txtAra", Location = new Point(origin.X, top), Width = 200, MaxLength = InputRules.TitleMaxLength };
-        _genre = Box("turCombo", origin.X + 215, top, 140);
-        _yearFrom = Box("yilBaslangicCombo", origin.X + 370, top, 90);
-        _yearTo = Box("yilBitisCombo", origin.X + 470, top, 90);
-        _rating = Box("puanCombo", origin.X + 575, top, 110);
-        _availableOnly = new CheckBox
-        {
-            Name = "chkMusait",
-            Text = "Yalnızca müsait",
-            Location = new Point(origin.X + 700, top + 2),
-            AutoSize = true,
-            Checked = availableOnly,
-            ForeColor = captionColor,
-            BackColor = Color.Transparent,
-        };
+        AutoSize = true;
+        AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        Dock = DockStyle.Top;
+        Margin = Padding.Empty;
+        ColumnCount = 6;
+        RowCount = 1;
+        RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _availableOnly.Checked = availableOnly;
 
         foreach (var box in new[] { _genre, _yearFrom, _yearTo })
         {
@@ -75,6 +52,30 @@ internal sealed class CatalogSearchBar : Panel
         }
 
         _rating.SelectedIndex = 0;
+
+        (Control Field, float Percent)[] columns =
+        [
+            (FormLayout.Field("&Film adı", FormLayout.Input(_title)), 34),
+            (FormLayout.Field("&Tür", _genre), 20),
+            (FormLayout.Field("Yıl&dan", _yearFrom), 12),
+            (FormLayout.Field("Yıl&a", _yearTo), 12),
+            (FormLayout.Field("En düşük &puan", _rating), 16),
+            (FormLayout.FieldAction(_availableOnly), 0),
+        ];
+        for (var i = 0; i < columns.Length; i++)
+        {
+            var (field, percent) = columns[i];
+            if (i == columns.Length - 1)
+            {
+                field.Margin = new Padding(field.Margin.Left, field.Margin.Top, 0, field.Margin.Bottom);
+            }
+
+            ColumnStyles.Add(percent > 0 ? new ColumnStyle(SizeType.Percent, percent) : new ColumnStyle(SizeType.AutoSize));
+            Controls.Add(field, i, 0);
+        }
+
+        // The check box lines up with the inputs' center line.
+        _availableOnly.Margin = new Padding(0, Spacing.XS + ((Sizes.ControlHeight - 22) / 2), 0, 0);
 
         _title.TextChanged += (_, _) => RestartTitleTimer();
         _title.KeyDown += (_, e) =>
@@ -92,19 +93,13 @@ internal sealed class CatalogSearchBar : Panel
         }
 
         _availableOnly.CheckedChanged += (_, _) => Raise();
-        Controls.AddRange(
-        [
-            Caption("Film adı", 0), _title,
-            Caption("Tür", 215), _genre,
-            Caption("Yıldan", 370), _yearFrom,
-            Caption("Yıla", 470), _yearTo,
-            Caption("En düşük puan", 575), _rating,
-            _availableOnly,
-        ]);
     }
 
     /// <summary>Raised when the user changes a field; for the title, once the typing pauses.</summary>
     public event EventHandler? Changed;
+
+    /// <summary>The title box, the first stop of the keyboard.</summary>
+    public TextBox TitleBox => _title;
 
     /// <summary>Whether a typed title waits for the pause before it is searched.</summary>
     public bool TitlePending => _titleTimer.Enabled;
@@ -145,9 +140,6 @@ internal sealed class CatalogSearchBar : Panel
             _filling = false;
         }
     }
-
-    private static ComboBox Box(string name, int x, int y, int width) =>
-        new() { Name = name, Location = new Point(x, y), Width = width, DropDownStyle = ComboBoxStyle.DropDownList };
 
     private static void Fill(ComboBox box, IEnumerable<string> values)
     {

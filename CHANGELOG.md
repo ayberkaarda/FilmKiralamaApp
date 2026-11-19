@@ -35,6 +35,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   model (`docs/THREAT_MODEL.md`) and this changelog.
 - Release job in CI: on `v*` tags the tag name is checked, a win-x64 build is published and uploaded as a zip
   artifact together with the READMEs, the changelogs and `docs/*.sql`.
+- Redesigned screens: an original clapperboard logo and icon, a velvet plum and marquee gold palette with
+  Franklin Gothic Medium headings, and light, dark and Windows high contrast themes. `Appearance:Theme` chooses
+  `Light`, `Dark` or `System`; open windows follow a change of the contrast or app mode.
+- Every screen on one shared frame (header, inline message strip, scrolling body, footer), per-monitor DPI aware and
+  never larger than the working area of its screen; results and rule refusals appear inside the window and
+  questions in a themed message window.
+- The catalog shows poster cards (2:3 posters, a pill for an empty shelf or the last copy, rating, daily price,
+  "Kirala" and a watchlist button) in a grid that wraps to the window and scrolls on its own; the profile and the
+  admin's rented films show rental cards with small posters.
+- Themed tables that say when they load and why they are empty, with colored states; the admin's film table shows
+  readable column names and leaves the poster address and the description to the editor.
+- `tools/Screenshots`: rasterizes the logo into the icon and the poster placeholder, and draws the README screenshots
+  at 1x and 2x offscreen from an invented shop with poster art drawn in code.
+- Layout tests that build every screen at four text sizes on 1024x600, 1366x768 and 1920x1040 working areas, and
+  theme, tab order and inline message tests.
 
 ### Changed
 
@@ -45,6 +60,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Customers also see listed films without a copy on the shelf when "Yalnızca müsait" is off; they cannot be rented
   but can go on the watchlist.
 - `docs/grant-app-login.sql` grants the rights on the review and watchlist tables.
+- A rental, a review, a password change and a sign-up close their window and the screen that opened it says what
+  happened; the poster placeholder has the 2:3 shape of a poster.
 
 ### Fixed
 
@@ -64,8 +81,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
-- The screenshots of the original application, which showed third-party film posters; the design update brings
-  new ones.
+- The screenshots of the original application, which showed third-party film posters; the redesigned screens are
+  drawn from invented data instead.
+- The third-party control package, the designer files, the background and sign-in pictures and the Edge based asset
+  script.
 
 ### Security
 

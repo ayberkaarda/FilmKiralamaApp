@@ -1,16 +1,18 @@
-﻿using System.Globalization;
+using System.Globalization;
 using FilmKiralama.Business.Reviews;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Domain.Entities;
 using FilmKiralama.UI.Infrastructure;
+using FilmKiralama.UI.Theming;
 
 namespace FilmKiralama.UI
 {
     /// <summary>
-    /// Rental of one film: its average rating and visible reviews, then the number of days, the total and
-    /// the confirmation. Closes with <see cref="DialogResult.OK"/> when the rental was stored.
+    /// Rental of one film: its poster, details, average rating and visible reviews, then the number of days,
+    /// the total and the confirmation. Closes with <see cref="DialogResult.OK"/> and <see cref="Receipt"/> set
+    /// when the rental was stored.
     /// </summary>
-    public partial class KiralamaForm : Form
+    public sealed class KiralamaForm : AppDialog
     {
         private readonly IFilmService _films;
         private readonly IRentalService _rentals;
@@ -18,13 +20,24 @@ namespace FilmKiralama.UI
         private readonly UserSession _session;
         private readonly int _filmId;
         private readonly ExclusiveOperation _rent = new();
-
-        // The film's average rating, and its visible reviews as plain text.
-        private readonly Label _rating;
-        private readonly TextBox _reviewText;
         private int _days = 1;
 
+        private readonly PosterBox picAfis = new() { Name = nameof(picAfis) };
+        private readonly HeadingLabel lblAd = new() { Name = nameof(lblAd) };
+        private readonly Label lblBilgi = FormLayout.Text(nameof(lblBilgi));
+        private readonly Label lblYonetmen = FormLayout.Text(nameof(lblYonetmen));
+        private readonly TextBox txtHakkinda = new() { Name = nameof(txtHakkinda), Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, TabStop = false };
+        private readonly ThemedButton btnAzalt = FormLayout.Button(nameof(btnAzalt), "Bir gün azalt", ButtonKind.Secondary, Glyphs.Remove);
+        private readonly TextBox txtGunSayisi = new() { Name = nameof(txtGunSayisi), Text = "1", TextAlign = HorizontalAlignment.Center, MaxLength = 4 };
+        private readonly ThemedButton btnArtir = FormLayout.Button(nameof(btnArtir), "Bir gün artır", ButtonKind.Secondary, Glyphs.Add);
+        private readonly Label lblUcret = FormLayout.Text(nameof(lblUcret));
+        private readonly Label lblToplamTutar = FormLayout.Text(nameof(lblToplamTutar));
+        private readonly Label lblPuan = FormLayout.Text(nameof(lblPuan));
+        private readonly TextBox txtYorumlar = new() { Name = nameof(txtYorumlar), Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, TabStop = false };
+        private readonly ThemedButton btnOdemeyeGec = FormLayout.Button(nameof(btnOdemeyeGec), "Ödemeye geç", ButtonKind.Primary, Glyphs.Cart);
+
         public KiralamaForm(IFilmService films, IRentalService rentals, IReviewService reviews, UserSession session, int filmId)
+            : base("Kiralama Ekranı", "Gün sayısını seçin, tutarı görün ve kiralamayı onaylayın.", Glyphs.Cart, new Size(1000, 700), new Size(820, 600), modal: true)
         {
             ArgumentNullException.ThrowIfNull(films);
             ArgumentNullException.ThrowIfNull(rentals);
@@ -36,84 +49,75 @@ namespace FilmKiralama.UI
             _reviews = reviews;
             _session = session;
             _filmId = filmId;
-            Prompts = new MessageBoxPrompts(this);
+            BuildLayout();
+            _rent.HoldClosingOf(this);
 
-            InitializeComponent();
-            AutoScaleMode = AutoScaleMode.None;
-            Icon = AppAssets.Icon;
-            BackgroundImage = AppAssets.Background;
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            MaximumSize = Size;
-            MinimumSize = Size;
-
-            Font = new Font("Segoe UI", 12);
-            btnArtir.ForeColor = Color.Black;
-            btnAzalt.ForeColor = Color.Black;
-            btnOdemeyeGec.ForeColor = Color.Black;
-            txtGunSayisi.TextAlign = HorizontalAlignment.Center;
-            txtGunSayisi.Font = new Font("Segoe UI", 12, FontStyle.Bold);
-            txtGunSayisi.Text = "1";
-
-            lblHakkinda.AutoSize = false;
-            lblHakkinda.Width = 370;
-            lblHakkinda.MaximumSize = new Size(370, 0);
-            lblHakkinda.AutoSize = true;
-            lblHakkinda.TextAlign = ContentAlignment.TopLeft;
-            pictureBox1.BorderStyle = BorderStyle.None;
-            pictureBox1.SizeMode = PictureBoxSizeMode.StretchImage;
             btnOdemeyeGec.Enabled = false;
-
-            // Reviews are user text: a label without mnemonics and a read-only text box show it as typed.
-            _rating = new Label
+            txtGunSayisi.KeyPress += (_, e) =>
             {
-                Name = "lblPuan",
-                Location = new Point(840, 130),
-                Size = new Size(280, 28),
-                UseMnemonic = false,
-                BackColor = Color.Transparent,
-                Font = new Font("Segoe UI", 11, FontStyle.Bold),
+                if (!char.IsControl(e.KeyChar) && !char.IsAsciiDigit(e.KeyChar))
+                {
+                    e.Handled = true;
+                }
             };
-            _reviewText = new TextBox
+            txtGunSayisi.KeyDown += (_, e) =>
             {
-                Name = "txtYorumlar",
-                Location = new Point(840, 162),
-                Size = new Size(280, 355),
-                Multiline = true,
-                ReadOnly = true,
-                ScrollBars = ScrollBars.Vertical,
-                Font = new Font("Segoe UI", 10),
-                TabStop = false,
+                if (e.KeyCode == Keys.Enter)
+                {
+                    e.SuppressKeyPress = true;
+                    ApplyTypedDays();
+                }
             };
-            Controls.AddRange([_rating, _reviewText]);
+            txtGunSayisi.Leave += (_, _) => ApplyTypedDays();
+            btnArtir.Click += (_, _) =>
+            {
+                ApplyTypedDays();
+                SetDays(_days + 1);
+            };
+            btnAzalt.Click += (_, _) =>
+            {
+                ApplyTypedDays();
+                SetDays(_days - 1);
+            };
+            btnOdemeyeGec.Click += async (_, _) => await RentAndCloseAsync();
         }
 
-        /// <summary>Confirmations and information; replaced in tests so no window opens.</summary>
+        /// <summary>Shows the poster; replaced by the screenshot tool so no download starts.</summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
+        internal PosterLoader Posters { get; set; } = PosterLoader.Default;
 
         /// <summary>The film as it was loaded; its price is the one the customer confirms.</summary>
         internal Film? Film { get; private set; }
 
         internal int Days => _days;
 
+        /// <summary>The stored rental, once the customer confirmed it.</summary>
+        internal RentalReceipt? Receipt { get; private set; }
+
+        /// <summary>The message the screen that opened the rental shows once it is stored.</summary>
+        internal static string Confirmation(string title, RentalReceipt receipt)
+        {
+            ArgumentNullException.ThrowIfNull(receipt);
+            return $"\"{title}\" kiralandı. İade tarihi: {DisplayFormat.Date(receipt.DueOn)}, toplam tutar: {DisplayFormat.Money(receipt.Total)}.";
+        }
+
         internal async Task LoadFilmAsync()
         {
             var film = await _films.GetAsync(_session, _filmId);
             Film = film;
-            lblMarka.Text = film.Title;
-            lblModel.Text = film.Genre;
-            lblYil.Text = film.Year.ToString(CultureInfo.InvariantCulture);
-            lblVites.Text = film.Director;
-            lblUcret.Text = DisplayFormat.Money(film.DailyPrice);
-            lblHakkinda.Text = film.About ?? string.Empty;
-            pictureBox1.ShowPoster(film.ImageUrl);
+            lblAd.Text = film.Title;
+            lblBilgi.Text = FilmText.YearAndGenre(film);
+            lblYonetmen.Text = "Yönetmen: " + film.Director;
+            txtHakkinda.Text = string.IsNullOrWhiteSpace(film.About) ? "Bu film için açıklama eklenmemiş." : film.About;
+            lblUcret.Text = "Günlük ücret: " + DisplayFormat.Money(film.DailyPrice);
+            picAfis.AccessibleName = film.Title + " afişi";
+            Posters.Show(picAfis, film.ImageUrl);
             btnOdemeyeGec.Enabled = true;
             UpdateTotal();
 
             var reviews = await _reviews.GetFilmReviewsAsync(_session, _filmId);
-            _rating.Text = "Puan: " + ReviewDisplay.Summary(reviews.Average, reviews.Count);
-            _reviewText.Text = ReviewDisplay.Describe(reviews.Reviews);
+            lblPuan.Text = "Puan: " + ReviewDisplay.Summary(reviews.Average, reviews.Count);
+            txtYorumlar.Text = ReviewDisplay.Describe(reviews.Reviews);
         }
 
         /// <summary>
@@ -145,7 +149,7 @@ namespace FilmKiralama.UI
                         return;
                     }
 
-                    await _rentals.RentAsync(_session, quote);
+                    Receipt = await _rentals.RentAsync(_session, quote);
                     rented = true;
                 },
                 btnOdemeyeGec,
@@ -160,12 +164,20 @@ namespace FilmKiralama.UI
             await this.RunAsync(LoadFilmAsync);
         }
 
+        private async Task RentAndCloseAsync()
+        {
+            if (await RentAsync() && !IsDisposed)
+            {
+                DialogResult = DialogResult.OK;
+                Close();
+            }
+        }
+
         private void UpdateTotal()
         {
             if (Film is { } film)
             {
-                lblToplamTutar.Text = "Toplam Tutar: " + DisplayFormat.Money(film.DailyPrice * _days);
-                lblToplamTutar.Show();
+                lblToplamTutar.Text = "Toplam: " + DisplayFormat.Money(film.DailyPrice * _days);
             }
         }
 
@@ -180,6 +192,9 @@ namespace FilmKiralama.UI
             UpdateTotal();
         }
 
+        /// <summary>Sets the number of days as the plus and minus buttons do, kept between 1 and the longest rental.</summary>
+        internal void ChooseDays(int days) => SetDays(days);
+
         private void SetDays(int days)
         {
             _days = Math.Clamp(days, 1, _rentals.Policy.MaxRentalDays);
@@ -187,47 +202,74 @@ namespace FilmKiralama.UI
             UpdateTotal();
         }
 
-        private void btnArtir_Click_1(object? sender, EventArgs e)
+        private void BuildLayout()
         {
-            ApplyTypedDays();
-            SetDays(_days + 1);
-        }
+            Name = nameof(KiralamaForm);
+            var p = Theme.Current;
 
-        private void btnAzalt_Click_1(object? sender, EventArgs e)
-        {
-            ApplyTypedDays();
-            SetDays(_days - 1);
-        }
+            // The poster keeps its 2:3 shape inside a card of its own, at the top of its column.
+            picAfis.Width = Sizes.PosterLargeWidth;
+            var posterCard = FormLayout.Card("posterCard", null, picAfis, fill: false);
+            posterCard.Padding = new Padding(Spacing.M);
+            posterCard.Margin = Padding.Empty;
+            var left = FormLayout.Page("leftColumn", (posterCard, false));
 
-        private void txtGunSayisi_KeyPress(object? sender, KeyPressEventArgs e)
-        {
-            if (!char.IsControl(e.KeyChar) && !char.IsAsciiDigit(e.KeyChar))
-            {
-                e.Handled = true;
-            }
-        }
+            lblAd.Font = Theme.Fonts.Display;
+            lblAd.ForeColor = p.Text;
+            lblAd.Dock = DockStyle.Top;
+            lblAd.Margin = Padding.Empty;
+            lblBilgi.ForeColor = p.TextSecondary;
+            lblYonetmen.ForeColor = p.TextSecondary;
+            lblYonetmen.Margin = new Padding(0, Spacing.XS / 2, 0, Spacing.M);
+            var about = FormLayout.Input(txtHakkinda, Sizes.NoteHeight + Spacing.L);
+            about.Margin = Padding.Empty;
+            txtHakkinda.AccessibleName = "Hakkında";
+            var details = FormLayout.Card("detailsCard", null, FormLayout.Stack("detailsStack", lblAd, lblBilgi, lblYonetmen, about), fill: false);
 
-        private void txtGunSayisi_KeyDown(object? sender, KeyEventArgs e)
-        {
-            if (e.KeyCode == Keys.Enter)
-            {
-                e.SuppressKeyPress = true;
-                ApplyTypedDays();
-            }
-        }
+            // Days: minus, the number, plus; then the daily price and the total, read from a step away.
+            txtGunSayisi.AccessibleName = "Gün sayısı";
+            txtGunSayisi.Font = Theme.Fonts.BodyStrong;
+            btnAzalt.IconOnly = true;
+            btnArtir.IconOnly = true;
+            var daysField = FormLayout.Input(txtGunSayisi);
+            daysField.Width = 72;
+            daysField.MinimumSize = new Size(72, daysField.MinimumSize.Height);
+            var stepper = FormLayout.Bar("dayStepper", (btnAzalt, false), (daysField, false), (btnArtir, false));
+            btnAzalt.Margin = new Padding(0, 0, Spacing.S, 0);
+            btnArtir.Margin = new Padding(Spacing.S, 0, 0, 0);
+            daysField.Margin = Padding.Empty;
+            var daysCaption = FormLayout.Caption("Gün sayısı");
+            var maxHint = FormLayout.Hint(string.Create(CultureInfo.CurrentCulture, $"1 ile {_rentals.Policy.MaxRentalDays} gün arası."));
+            lblUcret.ForeColor = p.TextSecondary;
+            lblUcret.Anchor = AnchorStyles.Right;
+            lblToplamTutar.Font = Theme.Fonts.Figure;
+            lblToplamTutar.ForeColor = p.AccentText;
+            lblToplamTutar.Anchor = AnchorStyles.Right;
+            var prices = FormLayout.Stack("priceStack", lblUcret, lblToplamTutar);
+            lblUcret.Dock = lblToplamTutar.Dock = DockStyle.None;
+            prices.Dock = DockStyle.None;
+            prices.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            var daysStack = FormLayout.Stack("daysStack", daysCaption, stepper, maxHint);
+            stepper.Dock = DockStyle.None;
+            stepper.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+            var rentRow = FormLayout.FieldRow("rentRow", (daysStack, 50), (prices, 50));
+            var rentCard = FormLayout.Card("rentCard", "Kiralama", rentRow, fill: false);
 
-        private void txtGunSayisi_Leave(object? sender, EventArgs e) => ApplyTypedDays();
+            lblPuan.Font = Theme.Fonts.BodyStrong;
+            lblPuan.ForeColor = p.WarmText;
+            lblPuan.Margin = new Padding(0, 0, 0, Spacing.S);
+            txtYorumlar.AccessibleName = "Yorumlar";
+            var reviewsBox = FormLayout.Input(txtYorumlar, Sizes.NoteHeight);
+            var reviews = FormLayout.Card("reviewsCard", "Yorumlar", FormLayout.Page("reviewsPage", (lblPuan, false), (reviewsBox, true)));
+            reviews.Margin = Padding.Empty;
 
-        private void txtGunSayisi_Validating(object? sender, System.ComponentModel.CancelEventArgs e) => ApplyTypedDays();
+            var right = FormLayout.Page("rightColumn", (details, false), (rentCard, false), (reviews, true));
+            Content.Controls.Add(FormLayout.Columns("layout", left, 30, right));
 
-        private async void btnOdemeyeGec_Click_1(object? sender, EventArgs e)
-        {
-            if (await RentAsync())
-            {
-                Prompts.Inform("Kiralama işlemi onaylandı ve kaydedildi. Anasayfaya yönlendiriliyorsunuz.");
-                DialogResult = DialogResult.OK;
-                Close();
-            }
+            AcceptButton = btnOdemeyeGec;
+            SetFooterNote("Ödeme alınmaz; kiralama onaylandığında kopya sizin için ayrılır.");
+            SetFooterButtons(btnOdemeyeGec, CreateCloseButton("btnKapat"));
+            FinishLayout();
         }
     }
 }

@@ -35,6 +35,21 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) esas alınara
   (`docs/THREAT_MODEL.md`) ve bu değişiklik günlüğü.
 - CI'da sürüm işi: `v*` etiketlerinde etiket adı denetlenir, win-x64 derlemesi yayımlanır ve README'ler, değişiklik
   günlükleri ve `docs/*.sql` ile birlikte zip çıktısı olarak yüklenir.
+- Yeniden tasarlanan ekranlar: özgün bir klaket logosu ve simgesi, Franklin Gothic Medium başlıklarla kadife mor ve
+  altın sarısı bir palet; açık, koyu ve Windows yüksek karşıtlık temaları. `Appearance:Theme` `Light`, `Dark` ya da
+  `System` seçer; açık pencereler karşıtlık ya da uygulama modu değişince buna uyar.
+- Her ekran ortak bir çerçevede (başlık, pencere içi mesaj şeridi, kayan gövde, alt bilgi), monitör başına DPI uyumlu
+  ve ekranının çalışma alanından asla büyük değil; sonuçlar ve kural retleri pencerenin içinde, sorular temalı bir
+  mesaj penceresinde görünür.
+- Katalog afiş kartları gösterir (2:3 afiş, boş raf ya da son kopya etiketi, puan, günlük ücret, "Kirala" ve izleme
+  listesi düğmesi); kartlar pencereye göre satıra dizilir ve kendi içinde kayar. Profil ve yöneticinin kiralanan
+  filmler ekranı küçük afişli kiralama kartları gösterir.
+- Yüklenirken ve boşken bunu söyleyen, durumları renkli temalı tablolar; yöneticinin film tablosu okunur sütun
+  adları gösterir, afiş adresini ve açıklamayı düzenleyiciye bırakır.
+- `tools/Screenshots`: logoyu simgeye ve afiş yer tutucusuna dönüştürür, README ekran görüntülerini uydurma bir
+  dükkândan, kodla çizilen afişlerle, pencere açmadan 1x ve 2x çizer.
+- Her ekranı 1024x600, 1366x768 ve 1920x1040 çalışma alanlarında dört yazı boyutuyla kuran yerleşim testleri; tema,
+  sekme sırası ve pencere içi mesaj testleri.
 
 ### Değişenler
 
@@ -45,6 +60,8 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) esas alınara
 - "Yalnızca müsait" kapalıyken müşteriler rafta kopyası olmayan, kiralamaya açık filmleri de görür; bu filmler
   kiralanamaz ama izleme listesine eklenebilir.
 - `docs/grant-app-login.sql` yorum ve izleme listesi tablolarındaki hakları verir.
+- Kiralama, değerlendirme, şifre değişikliği ve kayıt pencereleri işlem bitince kapanır, onları açan ekran ne
+  olduğunu söyler; afiş yer tutucusu bir afişin 2:3 biçimindedir.
 
 ### Düzeltilenler
 
@@ -65,7 +82,8 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) esas alınara
 
 ### Kaldırılanlar
 
-- Üçüncü taraf film afişleri gösteren, eski uygulamanın ekran görüntüleri; yenilerini tasarım güncellemesi getirecek.
+- Üçüncü taraf film afişleri gösteren, eski uygulamanın ekran görüntüleri; yeni ekranlar uydurma veriden çizilir.
+- Üçüncü taraf denetim paketi, tasarımcı dosyaları, arka plan ve giriş görselleri ve Edge ile çalışan görsel betiği.
 
 ### Güvenlik
 
