@@ -1,4 +1,5 @@
 using FilmKiralama.Domain.Entities;
+using FilmKiralama.UI.Infrastructure;
 using FilmKiralama.UI.Tests.Support;
 using static FilmKiralama.UI.Tests.Support.StaThread;
 
@@ -26,6 +27,7 @@ public sealed class CatalogUiTests
         Find<ComboBox>(form, "yilBaslangicCombo").SelectedIndex = 1; // 2015
         Find<CheckBox>(form, "chkMusait").Checked = false;
         Find<TextBox>(form, "txtAra").Text = "  Liman ";
+        form.Search.CommitTitle();
 
         Assert.Equal(2, films.CatalogRequests[1].Query.Page);
         Assert.Equal(
@@ -77,6 +79,7 @@ public sealed class CatalogUiTests
 
         _ = form.LoadFilmsAsync();
         Find<TextBox>(form, "txtAra").Text = "Son";
+        form.Search.CommitTitle();
         films.AdminSearches[1].Answer.SetResult(ControlledFilmService.Page([films.Films[1]], pageSize: 50));
         films.AdminSearches[0].Answer.SetResult(ControlledFilmService.Page(films.Films, pageSize: 50));
 
@@ -86,6 +89,36 @@ public sealed class CatalogUiTests
         Assert.Empty(grid.SelectedRows);
         Assert.Null(form.SelectedFilmId);
         Assert.Equal("Sayfa 1 / 1 (1 film)", Find<Label>(form, "lblSayfa").Text);
+    });
+
+    /// <summary>
+    /// Typing a title searches once, after a pause, not on every key; a choice made meanwhile searches at
+    /// once with the title typed so far, and the pause then starts no second search.
+    /// </summary>
+    [Fact]
+    public void SearchBar_Typing_SearchesOnceAfterAPause() => Run(() =>
+    {
+        var films = new ControlledFilmService { HoldAdminSearches = true };
+        using var form = new AdminPanel(films, new NoFormsFactory(), Sessions.Admin) { Prompts = new RecordingPrompts() };
+        var title = Find<TextBox>(form, "txtAra");
+        Assert.Equal(TimeSpan.FromMilliseconds(300), CatalogSearchBar.TitleDelay);
+
+        title.Text = "S";
+        title.Text = "So";
+        title.Text = "Son";
+        Assert.Empty(films.AdminSearches);
+        Assert.True(form.Search.TitlePending);
+
+        form.Search.CommitTitle();
+        form.Search.CommitTitle();
+        Assert.Equal([new CatalogQuery(Title: "Son", PageSize: CatalogQuery.MaxPageSize)], films.AdminSearches.Select(s => s.Query));
+
+        title.Text = "Son V";
+        Find<CheckBox>(form, "chkMusait").Checked = true;
+        Assert.False(form.Search.TitlePending);
+        form.Search.CommitTitle();
+        Assert.Equal(2, films.AdminSearches.Count);
+        Assert.Equal(new CatalogQuery(Title: "Son V", AvailableOnly: true, PageSize: CatalogQuery.MaxPageSize), films.AdminSearches[1].Query);
     });
 
     /// <summary>Filling the genre and year choices starts no search and keeps what was chosen.</summary>

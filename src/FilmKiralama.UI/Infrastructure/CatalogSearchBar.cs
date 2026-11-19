@@ -7,10 +7,16 @@ namespace FilmKiralama.UI.Infrastructure;
 /// <summary>
 /// The search fields of the film lists: title, genre, year range, minimum rating and "available only".
 /// Filling the choices is not a user choice: no change is reported while they are replaced, and the
-/// previous choices are kept when they still exist.
+/// previous choices are kept when they still exist. Typing in the title is reported once the typing
+/// pauses for <see cref="TitleDelay"/> (or at Enter), not on every key, so the database is not asked
+/// once per character; any other change is reported at once and includes the title typed so far.
 /// </summary>
 internal sealed class CatalogSearchBar : Panel
 {
+    /// <summary>Pause in typing after which the title is searched.</summary>
+    public static readonly TimeSpan TitleDelay = TimeSpan.FromMilliseconds(300);
+
+    private readonly System.Windows.Forms.Timer _titleTimer = new() { Interval = (int)TitleDelay.TotalMilliseconds };
     private readonly TextBox _title;
     private readonly ComboBox _genre;
     private readonly ComboBox _yearFrom;
@@ -70,7 +76,16 @@ internal sealed class CatalogSearchBar : Panel
 
         _rating.SelectedIndex = 0;
 
-        _title.TextChanged += (_, _) => Raise();
+        _title.TextChanged += (_, _) => RestartTitleTimer();
+        _title.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                e.SuppressKeyPress = true;
+                CommitTitle();
+            }
+        };
+        _titleTimer.Tick += (_, _) => CommitTitle();
         foreach (var box in new[] { _genre, _yearFrom, _yearTo, _rating })
         {
             box.SelectedIndexChanged += (_, _) => Raise();
@@ -88,8 +103,20 @@ internal sealed class CatalogSearchBar : Panel
         ]);
     }
 
-    /// <summary>Raised when the user changes any field.</summary>
+    /// <summary>Raised when the user changes a field; for the title, once the typing pauses.</summary>
     public event EventHandler? Changed;
+
+    /// <summary>Whether a typed title waits for the pause before it is searched.</summary>
+    public bool TitlePending => _titleTimer.Enabled;
+
+    /// <summary>Searches a typed title now instead of after the pause; nothing happens when none waits.</summary>
+    public void CommitTitle()
+    {
+        if (_titleTimer.Enabled)
+        {
+            Raise();
+        }
+    }
 
     /// <summary>The search of the fields, on the first page.</summary>
     public CatalogQuery Current => new(
@@ -143,10 +170,28 @@ internal sealed class CatalogSearchBar : Panel
 
     private static int? Year(ComboBox box) => Selected(box) is { } year ? int.Parse(year, CultureInfo.InvariantCulture) : null;
 
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _titleTimer.Dispose();
+        }
+
+        base.Dispose(disposing);
+    }
+
+    private void RestartTitleTimer()
+    {
+        _titleTimer.Stop();
+        _titleTimer.Start();
+    }
+
+    /// <summary>Reports a change, with the title as typed so far; a waiting title is reported with it.</summary>
     private void Raise()
     {
         if (!_filling)
         {
+            _titleTimer.Stop();
             Changed?.Invoke(this, EventArgs.Empty);
         }
     }
