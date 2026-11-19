@@ -3,6 +3,7 @@ using System.Globalization;
 using FilmKiralama.Business.Reports;
 using FilmKiralama.Business.Services;
 using FilmKiralama.UI.Infrastructure;
+using FilmKiralama.UI.Theming;
 
 namespace FilmKiralama.UI
 {
@@ -10,7 +11,7 @@ namespace FilmKiralama.UI
     /// The admin's reports: the most rented films and the late fees of a period, the rentals overdue today,
     /// each saved as CSV with the period it is shown with.
     /// </summary>
-    public sealed class RaporlarForm : Form
+    public sealed class RaporlarForm : AppDialog
     {
         internal const string SaveFailed = "Dosya kaydedilemedi; dosyanın başka bir programda açık olmadığından ve klasöre yazma izniniz olduğundan emin olun.";
 
@@ -20,16 +21,18 @@ namespace FilmKiralama.UI
         private readonly UserSession _session;
         private readonly ExclusiveOperation _export = new();
         private readonly RequestSequence _loads = new();
-        private readonly ComboBox _kind;
-        private readonly DateTimePicker _from;
-        private readonly DateTimePicker _to;
-        private readonly Button _show;
-        private readonly Button _csv;
-        private readonly DataGridView _grid;
-        private readonly Label _total;
         private (ReportKind Kind, ReportRange Range)? _shown;
 
+        private readonly ThemedComboBox cmbRapor = FormLayout.Picker(nameof(cmbRapor), 230);
+        private readonly DatePicker dtpBaslangic = new() { Name = nameof(dtpBaslangic), Format = DateTimePickerFormat.Short, Width = 140 };
+        private readonly DatePicker dtpBitis = new() { Name = nameof(dtpBitis), Format = DateTimePickerFormat.Short, Width = 140 };
+        private readonly ThemedButton btnGoster = FormLayout.Button(nameof(btnGoster), "Göster", ButtonKind.Primary, Glyphs.Chart);
+        private readonly ThemedGrid dgvRapor = new() { Name = nameof(dgvRapor) };
+        private readonly Label lblToplam = FormLayout.Text(nameof(lblToplam));
+        private readonly ThemedButton btnCsv = FormLayout.Button(nameof(btnCsv), "CSV olarak kaydet", ButtonKind.Secondary, Glyphs.Download);
+
         public RaporlarForm(IReportService reports, UserSession session, TimeProvider timeProvider)
+            : base("Raporlar", "Dönemin en çok kiralananları, bugün gecikenler ve gecikme ücretleri; CSV olarak kaydedin.", Glyphs.Chart, new Size(1040, 660), new Size(840, 520), modal: true)
         {
             ArgumentNullException.ThrowIfNull(reports);
             ArgumentNullException.ThrowIfNull(session);
@@ -37,47 +40,22 @@ namespace FilmKiralama.UI
 
             _reports = reports;
             _session = session;
-            Prompts = new MessageBoxPrompts(this);
             SavePrompt = new SaveFileDialogPrompt(this);
 
-            Text = "Raporlar";
-            Icon = AppAssets.Icon;
-            Font = new Font("Segoe UI", 10);
-            ClientSize = new Size(1000, 620);
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            StartPosition = FormStartPosition.CenterParent;
-
             var today = DateOnly.FromDateTime(timeProvider.GetLocalNow().DateTime);
-            Label Caption(string text, int x) => new() { Text = text, Location = new Point(x, 12), AutoSize = true };
-            _kind = new ComboBox { Name = "cmbRapor", Location = new Point(16, 34), Width = 230, DropDownStyle = ComboBoxStyle.DropDownList };
-            _kind.Items.AddRange([new ReportChoice(ReportKind.MostRented, "En çok kiralanan filmler"), new ReportChoice(ReportKind.Overdue, "Geciken kiralamalar (bugün)"), new ReportChoice(ReportKind.LateFees, "Gecikme ücretleri")]);
-            _kind.SelectedIndex = 0;
-            _from = new DateTimePicker { Name = "dtpBaslangic", Location = new Point(262, 34), Width = 150, Format = DateTimePickerFormat.Short, Value = today.AddDays(-30).ToDateTime(TimeOnly.MinValue) };
-            _to = new DateTimePicker { Name = "dtpBitis", Location = new Point(428, 34), Width = 150, Format = DateTimePickerFormat.Short, Value = today.ToDateTime(TimeOnly.MinValue) };
-            _show = new Button { Name = "btnGoster", Text = "Göster", Location = new Point(594, 31), Size = new Size(120, 34) };
-            _csv = new Button { Name = "btnCsv", Text = "CSV Olarak Kaydet", Location = new Point(830, 31), Size = new Size(154, 34), Enabled = false };
-            _grid = new DataGridView
-            {
-                Name = "dgvRapor",
-                Location = new Point(16, 80),
-                Size = new Size(968, 490),
-                RowHeadersVisible = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-            };
-            _grid.UseReadOnlyList();
-            _total = new Label { Name = "lblToplam", Location = new Point(16, 582), Size = new Size(968, 26), Font = new Font("Segoe UI", 10, FontStyle.Bold) };
+            cmbRapor.Items.AddRange([new ReportChoice(ReportKind.MostRented, "En çok kiralanan filmler"), new ReportChoice(ReportKind.Overdue, "Geciken kiralamalar (bugün)"), new ReportChoice(ReportKind.LateFees, "Gecikme ücretleri")]);
+            cmbRapor.SelectedIndex = 0;
+            dtpBaslangic.Value = today.AddDays(-30).ToDateTime(TimeOnly.MinValue);
+            dtpBitis.Value = today.ToDateTime(TimeOnly.MinValue);
+            BuildLayout();
+            _export.HoldClosingOf(this);
 
-            _kind.SelectedIndexChanged += (_, _) => UpdateDates();
-            _show.Click += async (_, _) => await this.RunAsync(LoadAsync);
-            _csv.Click += async (_, _) => await ExportCsvAsync();
-            Controls.AddRange([Caption("Rapor", 16), _kind, Caption("Başlangıç", 262), _from, Caption("Bitiş", 428), _to, _show, _csv, _grid, _total]);
+            btnCsv.Enabled = false;
+            cmbRapor.SelectedIndexChanged += (_, _) => UpdateDates();
+            btnGoster.Click += async (_, _) => await this.RunAsync(LoadAsync);
+            btnCsv.Click += async (_, _) => await ExportCsvAsync();
             UpdateDates();
         }
-
-        /// <summary>Confirmations and information; replaced in tests so no window opens.</summary>
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
 
         /// <summary>The save dialog; replaced in tests so no window opens.</summary>
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -88,61 +66,72 @@ namespace FilmKiralama.UI
 
         /// <summary>The report and period chosen in the fields.</summary>
         internal (ReportKind Kind, ReportRange Range) Chosen =>
-            (((ReportChoice)_kind.SelectedItem!).Kind, new ReportRange(DateOnly.FromDateTime(_from.Value), DateOnly.FromDateTime(_to.Value)));
+            (((ReportChoice)cmbRapor.SelectedItem!).Kind, new ReportRange(DateOnly.FromDateTime(dtpBaslangic.Value), DateOnly.FromDateTime(dtpBitis.Value)));
 
         /// <summary>Loads the chosen report; only the latest request is shown and binding selects nothing.</summary>
         internal async Task LoadAsync()
         {
             var request = _loads.Next();
             var (kind, range) = Chosen;
-            object rows;
-            string total;
-            switch (kind)
+            dgvRapor.IsLoading = true;
+            try
             {
-                case ReportKind.MostRented:
-                    var counts = await _reports.GetMostRentedAsync(_session, range);
-                    rows = counts.Select((r, i) => new { Sıra = i + 1, Film = r.Title, Tür = r.Genre, Kiralama = r.Rentals }).ToList();
-                    total = string.Create(CultureInfo.InvariantCulture, $"{counts.Count} film, toplam {counts.Sum(c => c.Rentals)} kiralama");
-                    break;
-                case ReportKind.Overdue:
-                    var overdue = await _reports.GetOverdueAsync(_session);
-                    rows = overdue.Select(r => new
-                    {
-                        No = r.Rental.RentalId,
-                        Film = r.Rental.FilmTitle,
-                        Kullanıcı = r.Rental.UserName,
-                        Alış = DisplayFormat.Date(r.Rental.RentedOn),
-                        İade = DisplayFormat.Date(r.Rental.DueOn),
-                        Gecikme = r.OverdueDays,
-                        Ücret = DisplayFormat.Money(r.AccruedFee),
-                    }).ToList();
-                    total = string.Create(CultureInfo.InvariantCulture, $"{overdue.Count} geciken kiralama, birikmiş gecikme ücreti {DisplayFormat.Money(overdue.Sum(r => r.AccruedFee))}");
-                    break;
-                default:
-                    var fees = await _reports.GetLateFeesAsync(_session, range);
-                    rows = fees.Rows.Select(r => new
-                    {
-                        No = r.RentalId,
-                        Film = r.FilmTitle,
-                        Kullanıcı = r.UserName,
-                        Planlanan = DisplayFormat.Date(r.DueOn),
-                        İade = DisplayFormat.Date(r.ReturnedOn),
-                        Ücret = DisplayFormat.Money(r.LateFee),
-                    }).ToList();
-                    total = string.Create(CultureInfo.InvariantCulture, $"{fees.Rows.Count} kiralama, toplam gecikme ücreti {DisplayFormat.Money(fees.Total)}");
-                    break;
-            }
+                object rows;
+                string total;
+                switch (kind)
+                {
+                    case ReportKind.MostRented:
+                        var counts = await _reports.GetMostRentedAsync(_session, range);
+                        rows = counts.Select((r, i) => new { Sıra = i + 1, Film = r.Title, Tür = r.Genre, Kiralama = r.Rentals }).ToList();
+                        total = string.Create(CultureInfo.InvariantCulture, $"{counts.Count} film, toplam {counts.Sum(c => c.Rentals)} kiralama");
+                        break;
+                    case ReportKind.Overdue:
+                        var overdue = await _reports.GetOverdueAsync(_session);
+                        rows = overdue.Select(r => new
+                        {
+                            No = r.Rental.RentalId,
+                            Film = r.Rental.FilmTitle,
+                            Kullanıcı = r.Rental.UserName,
+                            Alış = DisplayFormat.Date(r.Rental.RentedOn),
+                            İade = DisplayFormat.Date(r.Rental.DueOn),
+                            Gecikme = r.OverdueDays,
+                            Ücret = DisplayFormat.Money(r.AccruedFee),
+                        }).ToList();
+                        total = string.Create(CultureInfo.InvariantCulture, $"{overdue.Count} geciken kiralama, birikmiş gecikme ücreti {DisplayFormat.Money(overdue.Sum(r => r.AccruedFee))}");
+                        break;
+                    default:
+                        var fees = await _reports.GetLateFeesAsync(_session, range);
+                        rows = fees.Rows.Select(r => new
+                        {
+                            No = r.RentalId,
+                            Film = r.FilmTitle,
+                            Kullanıcı = r.UserName,
+                            Planlanan = DisplayFormat.Date(r.DueOn),
+                            İade = DisplayFormat.Date(r.ReturnedOn),
+                            Ücret = DisplayFormat.Money(r.LateFee),
+                        }).ToList();
+                        total = string.Create(CultureInfo.InvariantCulture, $"{fees.Rows.Count} kiralama, toplam gecikme ücreti {DisplayFormat.Money(fees.Total)}");
+                        break;
+                }
 
-            if (!_loads.IsLatest(request) || IsDisposed)
+                if (!_loads.IsLatest(request) || IsDisposed)
+                {
+                    return;
+                }
+
+                dgvRapor.DataSource = rows;
+                dgvRapor.ClearSelection();
+                lblToplam.Text = total;
+                _shown = (kind, range);
+                btnCsv.Enabled = true;
+            }
+            finally
             {
-                return;
+                if (_loads.IsLatest(request) && !IsDisposed)
+                {
+                    dgvRapor.IsLoading = false;
+                }
             }
-
-            _grid.DataSource = rows;
-            _grid.ClearSelection();
-            _total.Text = total;
-            _shown = (kind, range);
-            _csv.Enabled = true;
         }
 
         /// <summary>
@@ -180,15 +169,42 @@ namespace FilmKiralama.UI
                     _reports.RecordExport(_session);
                     Prompts.Inform("Rapor kaydedildi.");
                 },
-                _csv,
-                _show);
+                btnCsv,
+                btnGoster);
 
         private void UpdateDates()
         {
             // The overdue report is about today; it has no period.
-            var period = _kind.SelectedItem is ReportChoice { Kind: not ReportKind.Overdue };
-            _from.Enabled = period;
-            _to.Enabled = period;
+            var period = cmbRapor.SelectedItem is ReportChoice { Kind: not ReportKind.Overdue };
+            dtpBaslangic.Enabled = period;
+            dtpBitis.Enabled = period;
+        }
+
+        private void BuildLayout()
+        {
+            Name = nameof(RaporlarForm);
+            var filters = FormLayout.FieldRow(
+                "reportRow",
+                (FormLayout.Field("&Rapor", cmbRapor), 40),
+                (FormLayout.Field("&Başlangıç", FormLayout.Date(dtpBaslangic)), 22),
+                (FormLayout.Field("B&itiş", FormLayout.Date(dtpBitis)), 22),
+                (FormLayout.FieldAction(btnGoster), 0));
+            var filterCard = FormLayout.Card("filterCard", null, filters, fill: false);
+            filterCard.Padding = new Padding(Spacing.L, Spacing.M, Spacing.L, Spacing.XS);
+            filterCard.Margin = new Padding(0, 0, 0, Spacing.L);
+
+            dgvRapor.EmptyText = "Raporu ve dönemi seçip Göster'e basın.";
+            dgvRapor.FitColumns = new HashSet<string> { "Sıra", "Kiralama", "No", "Gecikme", "Ücret", "Alış", "İade", "Planlanan" };
+            lblToplam.Font = Theme.Fonts.BodyStrong;
+            lblToplam.Margin = new Padding(0, Spacing.M, 0, 0);
+            var reportCard = FormLayout.Card("reportCard", null, FormLayout.Page("reportPage", (dgvRapor, true), (lblToplam, false)));
+            reportCard.Margin = Padding.Empty;
+            Content.Controls.Add(FormLayout.Page("reportsPage", (filterCard, false), (reportCard, true)));
+
+            AcceptButton = btnGoster;
+            SetFooterNote("CSV dosyası gösterilen raporu, gösterildiği dönemle kaydeder.");
+            SetFooterButtons(btnCsv, CreateCloseButton("btnKapat"));
+            FinishLayout();
         }
 
         private sealed record ReportChoice(ReportKind Kind, string Text)

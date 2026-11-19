@@ -156,7 +156,13 @@ internal sealed class ThemedGrid : DataGridView, IThemeAware
 
     protected override void OnHandleCreated(EventArgs e)
     {
+        // A new window selects its first row by itself; rows bound before it existed stay unselected.
+        var hadSelection = SelectedRows.Count > 0;
         base.OnHandleCreated(e);
+        if (!hadSelection)
+        {
+            ClearSelection();
+        }
 
         // The padding was measured at the DPI known before the window existed.
         ApplyStyle(this);
@@ -181,7 +187,11 @@ internal sealed class ThemedGrid : DataGridView, IThemeAware
             column.Visible = !HiddenColumns.Contains(column.DataPropertyName);
             if (FitColumns.Contains(column.DataPropertyName))
             {
+                // The header keeps its whole caption too, also in the stronger header font.
                 column.AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells;
+                column.MinimumWidth = Math.Max(
+                    2,
+                    TextRenderer.MeasureText(column.HeaderText, ColumnHeadersDefaultCellStyle.Font ?? Font).Width + ColumnHeadersDefaultCellStyle.Padding.Horizontal + Theme.Px(this, Spacing.S));
             }
         }
 
