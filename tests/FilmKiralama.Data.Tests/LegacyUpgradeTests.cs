@@ -117,13 +117,15 @@ public sealed class LegacyUpgradeTests
         Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE KullaniciID = 3 AND Sifre LIKE N'PBKDF2-SHA256$%' AND SifreBicimi = 0", Ct));
         await auth.SignInAsync("yonetici", "admin1", Ct);
 
-        // The customer sees the old rental and returns it five days late; the copy goes back.
+        // The customer sees the old rental and returns it late; the copy goes back. The return day is the
+        // database's (UTC, as the test clock's zone), not the test computer's clock.
         var rentals = provider.GetRequiredService<IRentalService>();
         var mine = Assert.Single(await rentals.GetMyActiveRentalsAsync(user, Ct));
         Assert.Equal(new DateOnly(2026, 2, 25), mine.DueOn);
         var returned = await rentals.ReturnAsync(user, mine.Id, Ct);
-        Assert.Equal(5, returned.OverdueDays);
-        Assert.Equal(5 * DailyLateFee, returned.LateFee);
+        var late = await database.ScalarAsync("SELECT DATEDIFF(DAY, '2026-02-25', CAST(SYSUTCDATETIME() AS date))", Ct);
+        Assert.Equal(late, returned.OverdueDays);
+        Assert.Equal(late * DailyLateFee, returned.LateFee);
         Assert.Equal(1, await database.ScalarAsync("SELECT MevcutAdet FROM dbo.Filmler WHERE FilmID = 4", Ct));
 
         // Listed films only; new rows continue after the existing identities.

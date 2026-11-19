@@ -15,6 +15,7 @@ public sealed class RentalServiceTests
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 3, 2, 10, 0, 0, TimeSpan.Zero));
     private readonly RecordingAuditLog _audit = new();
     private RentalPolicy _policy = new() { DailyLateFee = 7.5m, MaxRentalDays = 30 };
+    private IClock? _clock;
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -137,6 +138,30 @@ public sealed class RentalServiceTests
         Assert.Equal(30m, receipt.LateFee);
     }
 
+    /// <summary>
+    /// The computer's clock is three days behind the database's: the rental starts, and the return is
+    /// charged, on the database's day, so a wrong clock neither backdates a rental nor waives a late fee.
+    /// </summary>
+    [Fact]
+    public async Task RentAndReturn_UseTheDatabaseClockNotTheComputers()
+    {
+        var databaseDay = Today.AddDays(3);
+        _clock = new TimeProviderClock(new FakeTimeProvider(new DateTimeOffset(2026, 3, 5, 10, 0, 0, TimeSpan.Zero)));
+        RentalRequest? sent = null;
+        _rentals.Setup(r => r.RentAsync(It.IsAny<RentalRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<RentalRequest, CancellationToken>((request, _) => sent = request)
+            .ReturnsAsync(new RentResult(RentOutcome.Rented, 11));
+        _rentals.Setup(r => r.ReturnAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false), databaseDay, It.IsAny<Func<DateOnly?, decimal>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ReturnResult(ReturnOutcome.Returned, Today, 22.5m));
+
+        var receipt = await Service().RentAsync(Sessions.User, Service().Quote(3, 10m, 2), Ct);
+        var returned = await Service().ReturnAsync(Sessions.User, 9, Ct);
+
+        Assert.Equal(databaseDay, sent!.RentedOn);
+        Assert.Equal(databaseDay.AddDays(2), receipt.DueOn);
+        Assert.Equal(3, returned.OverdueDays);
+    }
+
     [Fact]
     public void PreviewReturn_ShowsTodaysLateFee()
     {
@@ -170,5 +195,5 @@ public sealed class RentalServiceTests
         Assert.Equal(expectedProblems, policy.Validate().Count);
     }
 
-    private RentalService Service() => new(_rentals.Object, _time, _policy, _audit, TestValidators.Quote(_policy));
+    private RentalService Service() => new(_rentals.Object, _time, _clock ?? new TimeProviderClock(_time), _policy, _audit, TestValidators.Quote(_policy));
 }

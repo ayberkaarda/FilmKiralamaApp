@@ -242,8 +242,30 @@ public sealed class AuthServiceTests
         _users.VerifyNoOtherCalls();
     }
 
+    /// <summary>
+    /// A lock set by another computer ends at the database's time: the shared clock decides, and a
+    /// computer whose own clock is a day ahead has no say (the service has no other clock).
+    /// </summary>
+    [Fact]
+    public async Task SignIn_LockedAccount_EndsByTheSharedClockOnly()
+    {
+        var shared = new FakeTimeProvider(new DateTimeOffset(Now));
+        var hash = _hasher.Hash(Password);
+        var locked = new AccountCredentials(4, UserName, UserRole.User, hash, PasswordFormat.Pbkdf2, 0, Now.AddMinutes(15));
+        _users.Setup(u => u.FindByUserNameAsync(UserName, It.IsAny<CancellationToken>())).ReturnsAsync(locked);
+        _users.Setup(u => u.RecordSuccessfulLoginAsync(locked, It.IsAny<DateTime>(), null, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var service = new AuthService(_users.Object, _hasher, new TimeProviderClock(shared), _audit, TestValidators.SignIn, TestValidators.SignUp, TestValidators.PasswordChange);
+
+        _time.Advance(TimeSpan.FromDays(1));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => service.SignInAsync(UserName, Password, Ct));
+
+        shared.Advance(TimeSpan.FromMinutes(15));
+        Assert.Equal(4, (await service.SignInAsync(UserName, Password, Ct)).UserId);
+        _users.Verify(u => u.RecordSuccessfulLoginAsync(locked, Now.AddMinutes(15), null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private AuthService Service() =>
-        new(_users.Object, _hasher, _time, _audit, TestValidators.SignIn, TestValidators.SignUp, TestValidators.PasswordChange);
+        new(_users.Object, _hasher, new TimeProviderClock(_time), _audit, TestValidators.SignIn, TestValidators.SignUp, TestValidators.PasswordChange);
 
     private void Setup(AccountCredentials account) =>
         _users.Setup(u => u.FindByUserNameAsync(UserName, It.IsAny<CancellationToken>())).ReturnsAsync(account);

@@ -5,6 +5,7 @@ using FilmKiralama.Business.Validation;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using FilmKiralama.Domain.Repositories;
 
 namespace FilmKiralama.Business;
 
@@ -25,6 +26,7 @@ public static class BusinessServiceCollectionExtensions
         }
 
         services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<IClock, TimeProviderClock>();
         services.TryAddSingleton<IPasswordHasher>(_ => new PasswordHasher());
         services.TryAddSingleton<IAuditLog>(NullAuditLog.Instance);
         services.TryAddSingleton(SetupKeyThrottle.Default);

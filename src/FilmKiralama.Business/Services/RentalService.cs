@@ -23,7 +23,10 @@ public interface IRentalService
     /// <summary>The current settings (late fee per day, longest rental).</summary>
     RentalPolicy Policy { get; }
 
-    /// <summary>Price and dates of renting <paramref name="days"/> days from today, at the given daily price.</summary>
+    /// <summary>
+    /// Price and dates of renting <paramref name="days"/> days from today, at the given daily price, for
+    /// the confirmation. The rental itself works the dates out again from the database's clock.
+    /// </summary>
     RentalQuote Quote(int filmId, decimal dailyPrice, int days);
 
     /// <summary>
@@ -38,7 +41,7 @@ public interface IRentalService
     /// <summary>Every active rental that matches <paramref name="filter"/> (admin only).</summary>
     Task<IReadOnlyList<RentalDetails>> GetActiveRentalsAsync(UserSession session, FilmFilter filter, CancellationToken cancellationToken = default);
 
-    /// <summary>The late fee a return today would cost.</summary>
+    /// <summary>The late fee a return today would cost, by the computer's clock; the return decides by the database's.</summary>
     ReturnPreview PreviewReturn(RentalDetails rental);
 
     /// <summary>
@@ -51,6 +54,7 @@ public interface IRentalService
 internal sealed class RentalService(
     IRentalRepository rentals,
     TimeProvider timeProvider,
+    IClock clock,
     RentalPolicy policy,
     IAuditLog audit,
     IValidator<RentalQuoteInput> quoteValidator) : IRentalService
@@ -64,23 +68,18 @@ internal sealed class RentalService(
 
     public RentalPolicy Policy => policy;
 
-    public RentalQuote Quote(int filmId, decimal dailyPrice, int days)
-    {
-        quoteValidator.ValidateOrThrow(new RentalQuoteInput(days, dailyPrice));
-
-        var total = LateFeeCalculator.RentalPrice(days, dailyPrice);
-        var today = timeProvider.Today();
-        return new RentalQuote(filmId, days, dailyPrice, total, today, today.AddDays(days));
-    }
+    public RentalQuote Quote(int filmId, decimal dailyPrice, int days) => QuoteFrom(timeProvider.Today(), filmId, dailyPrice, days);
 
     public async Task<RentalReceipt> RentAsync(UserSession session, RentalQuote quote, CancellationToken cancellationToken = default)
     {
         Access.RequireSignedIn(session);
         ArgumentNullException.ThrowIfNull(quote);
 
-        // The dates and the total are worked out again here; only the film, the days and the price the
-        // customer saw come from the screen, and the repository refuses a price that has changed since.
-        var current = Quote(quote.FilmId, quote.DailyPrice, quote.Days);
+        // The dates and the total are worked out again here, from the database's clock; only the film,
+        // the days and the price the customer saw come from the screen, and the repository refuses a
+        // price that has changed since.
+        var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
+        var current = QuoteFrom(today, quote.FilmId, quote.DailyPrice, quote.Days);
         var request = new RentalRequest(current.FilmId, session.UserId, current.StartsOn, current.DueOn, current.DailyPrice, current.Total);
         var result = await audit.AsActorAsync(session, () => rentals.RentAsync(request, cancellationToken)).ConfigureAwait(false);
 
@@ -128,7 +127,8 @@ internal sealed class RentalService(
     {
         Access.RequireSignedIn(session);
 
-        var today = timeProvider.Today();
+        // The return day, and with it the late fee, follows the database's clock.
+        var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
         var dailyLateFee = policy.DailyLateFee;
         var result = await audit.AsActorAsync(
             session,
@@ -145,5 +145,13 @@ internal sealed class RentalService(
 
         audit.Record(AuditEvent.RentalReturned, AuditCodes.Of(session.Role));
         return new ReturnReceipt(LateFeeCalculator.OverdueDays(result.DueOn, today), result.LateFee);
+    }
+
+    private RentalQuote QuoteFrom(DateOnly today, int filmId, decimal dailyPrice, int days)
+    {
+        quoteValidator.ValidateOrThrow(new RentalQuoteInput(days, dailyPrice));
+
+        var total = LateFeeCalculator.RentalPrice(days, dailyPrice);
+        return new RentalQuote(filmId, days, dailyPrice, total, today, today.AddDays(days));
     }
 }

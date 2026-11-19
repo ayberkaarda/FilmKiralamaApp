@@ -3,6 +3,7 @@ using FilmKiralama.Data.Repositories;
 using FilmKiralama.Domain.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace FilmKiralama.Data;
 
@@ -42,6 +43,10 @@ public static class DataServiceCollectionExtensions
         services.AddSingleton<IUserRepository, UserRepository>();
         services.AddSingleton<IFilmRepository, FilmRepository>();
         services.AddSingleton<IRentalRepository, RentalRepository>();
+
+        // Time decisions follow the database's clock; registered after the business layer's default too.
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<IClock, DatabaseClock>();
         return services;
     }
 }

@@ -106,7 +106,7 @@ public sealed class AuditTests
     private AuthService Service(IAuditLog? audit = null) => new(
         _users.Object,
         _hasher,
-        new FakeTimeProvider(new DateTimeOffset(Now)),
+        new TimeProviderClock(new FakeTimeProvider(new DateTimeOffset(Now))),
         audit ?? _audit,
         TestValidators.SignIn,
         TestValidators.SignUp,
