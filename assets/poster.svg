@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320" width="240" height="320">
+  <!-- Stand-in for a film without a poster: a muted film frame on a dark card. -->
+  <defs>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a3a50"/>
+      <stop offset="1" stop-color="#25253a"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="320" fill="url(#card)"/>
+  <g transform="translate(60 110)" fill="none" stroke="#8a87a3" stroke-width="6" stroke-linejoin="round">
+    <rect x="0" y="0" width="120" height="100" rx="10"/>
+    <polygon points="50,32 50,68 80,50" fill="#8a87a3" stroke="none"/>
+  </g>
+  <g fill="#8a87a3">
+    <rect x="68" y="120" width="10" height="8" rx="2"/><rect x="68" y="146" width="10" height="8" rx="2"/><rect x="68" y="172" width="10" height="8" rx="2"/>
+    <rect x="162" y="120" width="10" height="8" rx="2"/><rect x="162" y="146" width="10" height="8" rx="2"/><rect x="162" y="172" width="10" height="8" rx="2"/>
+  </g>
+</svg>
