@@ -19,6 +19,33 @@ internal sealed class FilmRepository(IDbContextFactory<FilmDbContext> contextFac
             .ConfigureAwait(false);
     }
 
+    public async Task<PagedResult<CatalogEntry>> SearchAsync(CatalogQuery query, int actorId, bool asAdmin, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentOutOfRangeException.ThrowIfLessThan(query.PageSize, 1);
+
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actorId, asAdmin, cancellationToken).ConfigureAwait(false);
+
+        var films = Searched(db, query, listedOnly: !asAdmin);
+        var total = await films.CountAsync(cancellationToken).ConfigureAwait(false);
+        var page = Paging.ClampPage(query.Page, total, query.PageSize);
+        var rows = await films
+            .OrderBy(f => f.Title)
+            .ThenBy(f => f.Id)
+            .Skip((page - 1) * query.PageSize)
+            .Take(query.PageSize)
+            .Select(f => new
+            {
+                Film = f,
+                Count = db.Reviews.Count(r => r.FilmId == f.Id && !r.IsHidden),
+                Sum = db.Reviews.Where(r => r.FilmId == f.Id && !r.IsHidden).Sum(r => (int?)r.Rating) ?? 0,
+            })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return new PagedResult<CatalogEntry>([.. rows.Select(r => new CatalogEntry(r.Film, new RatingTotals(r.Count, r.Sum)))], total, page, query.PageSize);
+    }
+
     public async Task<FilmFilterOptions> GetFilterOptionsAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
@@ -138,6 +165,73 @@ internal sealed class FilmRepository(IDbContextFactory<FilmDbContext> contextFac
         }
 
         return films;
+    }
+
+    /// <summary>The films of <paramref name="query"/>, without paging or ordering.</summary>
+    private static IQueryable<Film> Searched(FilmDbContext db, CatalogQuery query, bool listedOnly)
+    {
+        var films = db.Films.AsNoTracking();
+        if (listedOnly)
+        {
+            films = films.Where(f => f.IsListed);
+        }
+
+        if (!string.IsNullOrEmpty(query.Title))
+        {
+            var pattern = "%" + EscapeLike(query.Title) + "%";
+            films = films.Where(f => EF.Functions.Like(f.Title, pattern, LikeEscape));
+        }
+
+        if (query.Genre is { } genre)
+        {
+            films = films.Where(f => f.Genre == genre);
+        }
+
+        if (query.YearFrom is { } from)
+        {
+            films = films.Where(f => f.Year >= from);
+        }
+
+        if (query.YearTo is { } to)
+        {
+            films = films.Where(f => f.Year <= to);
+        }
+
+        if (query.AvailableOnly)
+        {
+            films = films.Where(f => f.IsListed && f.AvailableCopies > 0);
+        }
+
+        if (query.MinRating is { } minimum)
+        {
+            // The shown average is rounded to one decimal, halves away from zero, so it is at least
+            // "minimum" exactly when sum / count >= minimum - 0.05, that is 20 x sum >= (20 x minimum - 1)
+            // x count; whole numbers only, the same on every provider.
+            var threshold = (20 * minimum) - 1;
+            films = films.Where(f =>
+                db.Reviews.Any(r => r.FilmId == f.Id && !r.IsHidden)
+                && 20 * db.Reviews.Where(r => r.FilmId == f.Id && !r.IsHidden).Sum(r => r.Rating)
+                    >= threshold * db.Reviews.Count(r => r.FilmId == f.Id && !r.IsHidden));
+        }
+
+        return films;
+    }
+
+    /// <summary>The escape character of the title search.</summary>
+    private const string LikeEscape = "\\";
+
+    /// <summary>
+    /// <paramref name="text"/> as a LIKE pattern that matches only itself: the escape character, %, _
+    /// and [ (a character class on SQL Server) are escaped.
+    /// </summary>
+    internal static string EscapeLike(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        return text
+            .Replace(LikeEscape, LikeEscape + LikeEscape, StringComparison.Ordinal)
+            .Replace("%", LikeEscape + "%", StringComparison.Ordinal)
+            .Replace("_", LikeEscape + "_", StringComparison.Ordinal)
+            .Replace("[", LikeEscape + "[", StringComparison.Ordinal);
     }
 
     private static Film Copy(Film film) => new()

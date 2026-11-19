@@ -8,8 +8,9 @@ public interface IRentalRepository
     /// <summary>
     /// Rents one copy: under the film's lock it checks that the film is listed, has a copy on the
     /// shelf, still costs <see cref="RentalRequest.ExpectedDailyPrice"/> a day and is not rented by the
-    /// same account already, then stores the rental and takes the copy off the shelf. The renting
-    /// account (<see cref="RentalRequest.UserId"/>) must still exist; it is checked in the same transaction.
+    /// same account already, then stores the rental, takes the copy off the shelf and the film off the
+    /// account's watchlist. The renting account (<see cref="RentalRequest.UserId"/>) must still exist; it
+    /// is checked in the same transaction.
     /// </summary>
     /// <exception cref="ActorRevokedException">The renting account no longer exists.</exception>
     Task<RentResult> RentAsync(RentalRequest request, CancellationToken cancellationToken = default);

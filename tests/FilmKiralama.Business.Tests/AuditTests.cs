@@ -32,6 +32,7 @@ public sealed class AuditTests
                 "auth.password.changed", "auth.password.change_refused", "setup.first_admin.created", "setup.key.refused",
                 "access.denied", "film.changed", "rental.created", "rental.out_of_stock", "rental.returned",
                 "account.changed", "access.session_revoked", "auth.account.registration_not_completed",
+                "review.saved", "review.deleted", "review.moderated", "watchlist.changed", "report.exported",
             ],
             Enum.GetValues<AuditEvent>().Select(AuditCodes.Of));
         Assert.Equal(["unknown", "user", "admin"], Enum.GetValues<AuditRole>().Select(AuditCodes.Of));
@@ -106,7 +107,7 @@ public sealed class AuditTests
     private AuthService Service(IAuditLog? audit = null) => new(
         _users.Object,
         _hasher,
-        new FakeTimeProvider(new DateTimeOffset(Now)),
+        new TimeProviderClock(new FakeTimeProvider(new DateTimeOffset(Now))),
         audit ?? _audit,
         TestValidators.SignIn,
         TestValidators.SignUp,

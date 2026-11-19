@@ -2,6 +2,7 @@ using FilmKiralama.Business;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Data.Persistence;
 using FilmKiralama.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using static FilmKiralama.Data.Tests.TestServices;
 
@@ -67,6 +68,9 @@ public sealed class LegacyUpgradeTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
+    /// <summary>The migrations of the model; each is recorded once, also when two starts upgrade at the same time.</summary>
+    private static int MigrationCount { get; } = new FilmDbContext(new DbContextOptionsBuilder<FilmDbContext>().UseSqlServer("Server=.").Options).Database.GetMigrations().Count();
+
     [Fact]
     public async Task Initialize_LegacyDatabase_KeepsTheRowsAndTurnsThemIntoTheNewModel()
     {
@@ -117,13 +121,15 @@ public sealed class LegacyUpgradeTests
         Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE KullaniciID = 3 AND Sifre LIKE N'PBKDF2-SHA256$%' AND SifreBicimi = 0", Ct));
         await auth.SignInAsync("yonetici", "admin1", Ct);
 
-        // The customer sees the old rental and returns it five days late; the copy goes back.
+        // The customer sees the old rental and returns it late; the copy goes back. The return day is the
+        // database's (UTC, as the test clock's zone), not the test computer's clock.
         var rentals = provider.GetRequiredService<IRentalService>();
         var mine = Assert.Single(await rentals.GetMyActiveRentalsAsync(user, Ct));
         Assert.Equal(new DateOnly(2026, 2, 25), mine.DueOn);
         var returned = await rentals.ReturnAsync(user, mine.Id, Ct);
-        Assert.Equal(5, returned.OverdueDays);
-        Assert.Equal(5 * DailyLateFee, returned.LateFee);
+        var late = await database.ScalarAsync("SELECT DATEDIFF(DAY, '2026-02-25', CAST(SYSUTCDATETIME() AS date))", Ct);
+        Assert.Equal(late, returned.OverdueDays);
+        Assert.Equal(late * DailyLateFee, returned.LateFee);
         Assert.Equal(1, await database.ScalarAsync("SELECT MevcutAdet FROM dbo.Filmler WHERE FilmID = 4", Ct));
 
         // Listed films only; new rows continue after the existing identities.
@@ -133,6 +139,13 @@ public sealed class LegacyUpgradeTests
         Assert.True(receipt.RentalId > 3);
         var filmId = await AddFilmAsync(provider, "Yeni Film", 2, admin: admin);
         Assert.True(filmId > 9);
+
+        // The tables added after the original schema work on the upgraded database: the customer rates
+        // the old film just returned and puts another one on the watchlist.
+        await provider.GetRequiredService<FilmKiralama.Business.Reviews.IReviewService>().SaveAsync(user, 4, new FilmKiralama.Business.Reviews.ReviewInput(4, "Eski ama iyi"), Ct);
+        Assert.True(await provider.GetRequiredService<FilmKiralama.Business.Watchlists.IWatchlistService>().AddAsync(user, filmId, Ct));
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Degerlendirmeler WHERE FilmID = 4 AND KullaniciID = 5 AND Puan = 4", Ct));
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.IzlemeListesi WHERE KullaniciID = 5", Ct));
 
         // Rows the upgrade kept with NULLs can be saved from the admin forms as they are: the password of
         // an account without e-mail and phone is reset, a film without a description is listed again.
@@ -196,7 +209,7 @@ public sealed class LegacyUpgradeTests
             Task.Run(() => a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct), Ct),
             Task.Run(() => b.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct), Ct));
 
-        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.__EFMigrationsHistory", Ct));
+        Assert.Equal(MigrationCount, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.__EFMigrationsHistory", Ct));
         Assert.Equal(0, await database.ScalarAsync("SELECT MevcutAdet FROM dbo.Filmler WHERE FilmID = 4", Ct));
         Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kiralama", Ct));
     }
@@ -222,7 +235,7 @@ public sealed class LegacyUpgradeTests
         }
 
         await initialization;
-        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.__EFMigrationsHistory", Ct));
+        Assert.Equal(MigrationCount, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.__EFMigrationsHistory", Ct));
         Assert.Equal(0, await database.ScalarAsync("SELECT MevcutAdet FROM dbo.Filmler WHERE FilmID = 4", Ct));
     }
 

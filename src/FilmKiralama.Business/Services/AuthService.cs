@@ -29,7 +29,7 @@ public interface IAuthService
 internal sealed class AuthService(
     IUserRepository users,
     IPasswordHasher passwordHasher,
-    TimeProvider timeProvider,
+    IClock clock,
     IAuditLog audit,
     IValidator<SignInInput> signInValidator,
     IValidator<SignUpInput> signUpValidator,
@@ -65,6 +65,11 @@ internal sealed class AuthService(
 
         var name = input.UserName;
         password = input.Password!;
+
+        // The database's clock: a computer whose clock is ahead cannot end a lock early, nor one whose
+        // clock is behind make a lock last longer. It is read before the lookup, for every name, so the
+        // round trip does not make a known name slower to refuse than an unknown one.
+        var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
         var account = await users.FindByUserNameAsync(name, cancellationToken).ConfigureAwait(false);
         if (account is null)
         {
@@ -72,7 +77,6 @@ internal sealed class AuthService(
             throw Refused();
         }
 
-        var now = timeProvider.GetUtcNow().UtcDateTime;
         if (account.LockoutEnd > now)
         {
             // Same answer and about the same cost as a wrong password; nothing is written, so the lock
@@ -174,7 +178,7 @@ internal sealed class AuthService(
 
         var role = AuditCodes.Of(session.Role);
         var account = await users.FindByIdAsync(session.UserId, cancellationToken).ConfigureAwait(false);
-        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
         if (account is null || account.LockoutEnd > now || currentPassword.Length > PasswordPolicy.MaxLength)
         {
             passwordHasher.SimulateVerification(currentPassword);

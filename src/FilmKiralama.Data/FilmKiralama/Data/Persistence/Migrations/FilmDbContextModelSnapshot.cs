@@ -161,6 +161,60 @@ namespace FilmKiralama.Data.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FilmKiralama.Domain.Entities.Review", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("DegerlendirmeID");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("Yorum");
+
+                    b.Property<int>("FilmId")
+                        .HasColumnType("int")
+                        .HasColumnName("FilmID");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("Silindi");
+
+                    b.Property<bool>("IsHidden")
+                        .HasColumnType("bit")
+                        .HasColumnName("Gizli");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("int")
+                        .HasColumnName("Puan");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("GuncellemeTarihi");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("KullaniciID");
+
+                    b.HasKey("Id")
+                        .HasName("PK_Degerlendirmeler");
+
+                    b.HasIndex(new[] { "FilmId", "IsHidden" }, "IX_Degerlendirmeler_FilmID_Gizli");
+
+                    b.HasIndex(new[] { "UserId", "FilmId" }, "IX_Degerlendirmeler_KullaniciID_FilmID")
+                        .IsUnique();
+
+                    b.ToTable("Degerlendirmeler", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Degerlendirmeler_Puan", "[Puan] >= 1 AND [Puan] <= 5");
+                        });
+                });
+
             modelBuilder.Entity("FilmKiralama.Domain.Entities.SetupKey", b =>
                 {
                     b.Property<int>("Id")
@@ -273,6 +327,38 @@ namespace FilmKiralama.Data.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FilmKiralama.Domain.Entities.WatchlistEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("IzlemeID");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("EklenmeTarihi");
+
+                    b.Property<int>("FilmId")
+                        .HasColumnType("int")
+                        .HasColumnName("FilmID");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("KullaniciID");
+
+                    b.HasKey("Id")
+                        .HasName("PK_IzlemeListesi");
+
+                    b.HasIndex(new[] { "FilmId" }, "IX_IzlemeListesi_FilmID");
+
+                    b.HasIndex(new[] { "UserId", "FilmId" }, "IX_IzlemeListesi_KullaniciID_FilmID")
+                        .IsUnique();
+
+                    b.ToTable("IzlemeListesi", (string)null);
+                });
+
             modelBuilder.Entity("FilmKiralama.Domain.Entities.Rental", b =>
                 {
                     b.HasOne("FilmKiralama.Domain.Entities.Film", null)
@@ -288,6 +374,40 @@ namespace FilmKiralama.Data.Persistence.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("FK_Kiralama_Kullanicilar");
+                });
+
+            modelBuilder.Entity("FilmKiralama.Domain.Entities.Review", b =>
+                {
+                    b.HasOne("FilmKiralama.Domain.Entities.Film", null)
+                        .WithMany()
+                        .HasForeignKey("FilmId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Degerlendirmeler_Filmler");
+
+                    b.HasOne("FilmKiralama.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Degerlendirmeler_Kullanicilar");
+                });
+
+            modelBuilder.Entity("FilmKiralama.Domain.Entities.WatchlistEntry", b =>
+                {
+                    b.HasOne("FilmKiralama.Domain.Entities.Film", null)
+                        .WithMany()
+                        .HasForeignKey("FilmId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_IzlemeListesi_Filmler");
+
+                    b.HasOne("FilmKiralama.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_IzlemeListesi_Kullanicilar");
                 });
 #pragma warning restore 612, 618
         }

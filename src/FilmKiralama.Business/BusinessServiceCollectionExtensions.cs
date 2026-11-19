@@ -1,10 +1,15 @@
 using FilmKiralama.Business.Auditing;
+using FilmKiralama.Business.Reports;
+using FilmKiralama.Business.Reviews;
 using FilmKiralama.Business.Security;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Business.Validation;
+using FilmKiralama.Business.Watchlists;
+using FilmKiralama.Domain.Entities;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using FilmKiralama.Domain.Repositories;
 
 namespace FilmKiralama.Business;
 
@@ -25,6 +30,7 @@ public static class BusinessServiceCollectionExtensions
         }
 
         services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<IClock, TimeProviderClock>();
         services.TryAddSingleton<IPasswordHasher>(_ => new PasswordHasher());
         services.TryAddSingleton<IAuditLog>(NullAuditLog.Instance);
         services.TryAddSingleton(SetupKeyThrottle.Default);
@@ -38,12 +44,19 @@ public static class BusinessServiceCollectionExtensions
         services.AddSingleton<IValidator<AccountChangeInput>, AccountChangeInputValidator>();
         services.AddSingleton<IValidator<FilmFields>, FilmFieldsValidator>();
         services.AddSingleton<IValidator<RentalQuoteInput>, RentalQuoteInputValidator>();
+        services.AddSingleton<IValidator<ReviewFields>, ReviewFieldsValidator>();
+        services.AddSingleton<IValidator<CatalogQuery>, CatalogQueryValidator>();
+        services.AddSingleton<IValidator<ReportRange>, ReportRangeValidator>();
         services.AddSingleton<SetupKeyGate>();
         services.AddSingleton<IAuthService, AuthService>();
         services.AddSingleton<ISetupService, SetupService>();
         services.AddSingleton<IFilmService, FilmService>();
         services.AddSingleton<IRentalService, RentalService>();
         services.AddSingleton<IAccountService, AccountService>();
+        services.AddSingleton<IReviewService, ReviewService>();
+        services.AddSingleton<IWatchlistService, WatchlistService>();
+        services.AddSingleton<IReportService, ReportService>();
+        services.AddSingleton<IRecommendationService, RecommendationService>();
         return services;
     }
 }

@@ -1,4 +1,5 @@
 using FilmKiralama.Business;
+using FilmKiralama.Business.Reviews;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Data.Persistence;
 using FilmKiralama.Domain.Entities;
@@ -65,7 +66,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
     public async Task Rent_PriceChangedAfterTheQuote_IsRefusedAndTakesNoCopy()
     {
         var rentals = _db.Get<IRentalService>();
-        var quote = rentals.Quote(ThreeCopiesFilmId, 25m, 2);
+        var quote = await rentals.QuoteAsync(ThreeCopiesFilmId, 25m, 2, Ct);
         await UpdateFilmAsync(ThreeCopiesFilmId, price: "27,50");
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => rentals.RentAsync(User(SeedUserId), quote, Ct));
@@ -80,7 +81,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         await UpdateFilmAsync(ThreeCopiesFilmId, listed: false);
 
         var rentals = _db.Get<IRentalService>();
-        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => rentals.RentAsync(User(SeedUserId), rentals.Quote(ThreeCopiesFilmId, 25m, 1), Ct));
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(async () => await rentals.RentAsync(User(SeedUserId), await rentals.QuoteAsync(ThreeCopiesFilmId, 25m, 1, Ct), Ct));
 
         Assert.Equal(RentalService.NotAvailable, error.Message);
     }
@@ -300,12 +301,26 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         await _db.Get<IAccountService>().DeleteAsync(Admin(SeedAdminId), gone.UserId, Ct);
         var rentals = _db.Get<IRentalService>();
 
-        var rent = await Assert.ThrowsAsync<AccessDeniedException>(() => rentals.RentAsync(gone, rentals.Quote(ThreeCopiesFilmId, 25m, 1), Ct));
+        var rent = await Assert.ThrowsAsync<AccessDeniedException>(async () => await rentals.RentAsync(gone, await rentals.QuoteAsync(ThreeCopiesFilmId, 25m, 1, Ct), Ct));
         var list = await Assert.ThrowsAsync<AccessDeniedException>(() => rentals.GetMyActiveRentalsAsync(gone, Ct));
 
         Assert.Equal(AccessDeniedException.SessionRevokedMessage, rent.Message);
         Assert.Equal(AccessDeniedException.SessionRevokedMessage, list.Message);
         Assert.Equal(3, await AvailableAsync(ThreeCopiesFilmId));
+    }
+
+    /// <summary>A deleted account's open session can no longer search the catalog or read reviews.</summary>
+    [Fact]
+    public async Task DeletedUserSession_CannotSearchOrReadReviews()
+    {
+        var gone = await RegisterAsync(_db.Services, "okuyan", 1);
+        await _db.Get<IAccountService>().DeleteAsync(Admin(SeedAdminId), gone.UserId, Ct);
+
+        var search = await Assert.ThrowsAsync<AccessDeniedException>(() => _db.Get<IFilmService>().SearchCatalogAsync(gone, new CatalogQuery(), Ct));
+        var reviews = await Assert.ThrowsAsync<AccessDeniedException>(() => _db.Get<IReviewService>().GetFilmReviewsAsync(gone, ThreeCopiesFilmId, Ct));
+
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, search.Message);
+        Assert.Equal(AccessDeniedException.SessionRevokedMessage, reviews.Message);
     }
 
     /// <summary>A deleted admin's open session can no longer manage anything.</summary>

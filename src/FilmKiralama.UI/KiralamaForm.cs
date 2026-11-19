@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using FilmKiralama.Business.Reviews;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Domain.Entities;
 using FilmKiralama.UI.Infrastructure;
@@ -6,26 +7,33 @@ using FilmKiralama.UI.Infrastructure;
 namespace FilmKiralama.UI
 {
     /// <summary>
-    /// Rental of one film: choose the number of days, see the total and confirm. Closes with
-    /// <see cref="DialogResult.OK"/> when the rental was stored.
+    /// Rental of one film: its average rating and visible reviews, then the number of days, the total and
+    /// the confirmation. Closes with <see cref="DialogResult.OK"/> when the rental was stored.
     /// </summary>
     public partial class KiralamaForm : Form
     {
         private readonly IFilmService _films;
         private readonly IRentalService _rentals;
+        private readonly IReviewService _reviews;
         private readonly UserSession _session;
         private readonly int _filmId;
         private readonly ExclusiveOperation _rent = new();
+
+        // The film's average rating, and its visible reviews as plain text.
+        private readonly Label _rating;
+        private readonly TextBox _reviewText;
         private int _days = 1;
 
-        public KiralamaForm(IFilmService films, IRentalService rentals, UserSession session, int filmId)
+        public KiralamaForm(IFilmService films, IRentalService rentals, IReviewService reviews, UserSession session, int filmId)
         {
             ArgumentNullException.ThrowIfNull(films);
             ArgumentNullException.ThrowIfNull(rentals);
+            ArgumentNullException.ThrowIfNull(reviews);
             ArgumentNullException.ThrowIfNull(session);
 
             _films = films;
             _rentals = rentals;
+            _reviews = reviews;
             _session = session;
             _filmId = filmId;
             Prompts = new MessageBoxPrompts(this);
@@ -55,6 +63,29 @@ namespace FilmKiralama.UI
             pictureBox1.BorderStyle = BorderStyle.None;
             pictureBox1.SizeMode = PictureBoxSizeMode.StretchImage;
             btnOdemeyeGec.Enabled = false;
+
+            // Reviews are user text: a label without mnemonics and a read-only text box show it as typed.
+            _rating = new Label
+            {
+                Name = "lblPuan",
+                Location = new Point(840, 130),
+                Size = new Size(280, 28),
+                UseMnemonic = false,
+                BackColor = Color.Transparent,
+                Font = new Font("Segoe UI", 11, FontStyle.Bold),
+            };
+            _reviewText = new TextBox
+            {
+                Name = "txtYorumlar",
+                Location = new Point(840, 162),
+                Size = new Size(280, 355),
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                Font = new Font("Segoe UI", 10),
+                TabStop = false,
+            };
+            Controls.AddRange([_rating, _reviewText]);
         }
 
         /// <summary>Confirmations and information; replaced in tests so no window opens.</summary>
@@ -79,6 +110,10 @@ namespace FilmKiralama.UI
             pictureBox1.ShowPoster(film.ImageUrl);
             btnOdemeyeGec.Enabled = true;
             UpdateTotal();
+
+            var reviews = await _reviews.GetFilmReviewsAsync(_session, _filmId);
+            _rating.Text = "Puan: " + ReviewDisplay.Summary(reviews.Average, reviews.Count);
+            _reviewText.Text = ReviewDisplay.Describe(reviews.Reviews);
         }
 
         /// <summary>
@@ -98,7 +133,7 @@ namespace FilmKiralama.UI
                 _rent,
                 async () =>
                 {
-                    var quote = _rentals.Quote(film.Id, film.DailyPrice, _days);
+                    var quote = await _rentals.QuoteAsync(film.Id, film.DailyPrice, _days);
                     var question =
                         $"Toplam Tutar: {DisplayFormat.Money(quote.Total)}\n"
                         + $"Kiralama Başlangıç Tarihi: {DisplayFormat.Date(quote.StartsOn)}\n"

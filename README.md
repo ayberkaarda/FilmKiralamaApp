@@ -17,10 +17,15 @@ startup.
 
 ### Film catalog
 
-- ✅ **Catalog** ("Film Kirala", Rent a Film): the films a customer can rent now, that is listed films with a copy on
-  the shelf, with poster, title, genre, year, director and daily price.
-- ✅ **Filters** by genre ("Tür"), director ("Yönetmen") and year ("Yıl"); filling the filter lists never starts a
-  load by itself, and only the answer to the latest filter is shown.
+- ✅ **Catalog** ("Film Kirala", Rent a Film): listed films with poster, title, genre, year, director, daily price
+  and average rating; "Yalnızca müsait" (Available only, on by default) keeps the films with a copy on the shelf.
+  A film without a copy shows "Stokta yok" (Out of stock) instead of the rent button.
+- ✅ **Search** by title ("Film adı", found anywhere in the title; `%`, `_` and `[` match only themselves), genre,
+  year range ("Yıldan", "Yıla") and minimum rating ("En düşük puan", compared with the shown average). The list is
+  paged in the service (12 films a page, "Önceki" / "Sonraki"), ordered by title and then by id so pages never
+  overlap; a page past the end shows the last page. A typed title is searched once the typing pauses for 300 ms
+  (or at Enter), not on every key. Filling the search lists never starts a load by itself, and only the answer to
+  the latest search or page is shown, on the customer's and on the admin's screen.
 - ✅ **Posters** are loaded in the background from public http or https addresses only; anything else shows the
   application's own placeholder.
 
@@ -36,12 +41,49 @@ startup.
   account's own active rentals; admins take any rental back ("İade Al", Take Back) in the rental panel ("Kiralama
   Paneli").
 
+### Watchlist
+
+- ✅ **"Listeye Ekle"** (Add to list) on every catalog card and in the recommendations puts a film on the customer's
+  own watchlist ("İzleme Listem", My Watchlist), once per film (a unique index decides, also for two adds at the
+  same moment), at most 100 films.
+- ✅ The list shows which films can be rented now; "Kirala" rents one straight from the list, and a rental takes the
+  film off the list in the same transaction. "Listeden Çıkar" removes one. A film the admin has unlisted since it
+  was added shows only its title and "Kaldırıldı" (Removed).
+- ✅ Every account reaches only its own list: another account's entry gets the same answer as a missing one.
+
+### Ratings and reviews
+
+- ✅ A customer rates a film they **rented and returned** with 1 to 5 stars and an optional comment of at most 500
+  characters ("Puan Ver / Düzenle" in the profile). One review per account and film; it can be changed or deleted.
+  Rating a film still out, or never rented, is refused.
+- ✅ The rental screen shows the film's average rating (one decimal, halves rounded away from zero, computed in
+  `decimal` by the service) and its newest visible reviews. Authors are shown masked ("O***"), comments as plain
+  text: markup, `&` and formula characters show as typed, and line breaks, control and invisible formatting
+  characters (such as right-to-left overrides) are refused.
+- ✅ Admins hide a review or show it again ("Yorumlar", Reviews); a hidden review leaves the public list and the
+  average, and stays hidden when its author changes it or deletes it and writes it again (a deleted hidden
+  review keeps its hidden mark without its comment and is shown to nobody, the admin included).
+
+### Reports and recommendations
+
+- ✅ **Reports** ("Raporlar", admins): the most rented films of a period (top 20), the rentals overdue today with
+  the late fee so far, and the late fees of the rentals returned in a period with their total (summed in `decimal`).
+  Both ends of a period count; a period covers at most 3660 days.
+- ✅ **CSV export** of the shown report with the period it is shown with: UTF-8 with a byte order mark, `;` between
+  quoted fields, a leading `'` before anything a spreadsheet would run as a formula (also after leading spaces or
+  line breaks), written to a temporary file in the target folder and then moved over the target. A file that
+  cannot be written (open in another program, no write right) gets its own message, and the export is recorded in
+  the log only once the file is saved.
+- ✅ **Recommendations** ("Öneriler", customers): the films of the genre the customer rented most (every genre tied
+  for the most), that they have never rented and that can be rented now, best rated first, at most 8.
+
 ### Stock
 
 - ✅ Every film has a number of copies ("Adet", 1-1000) and the copies on the shelf. A rental takes one copy off
   the shelf and a return puts it back, both in one database transaction under the film's lock, so concurrent
   customers can never take more copies than the shop owns; the last copy goes to exactly one of them.
-- ✅ A film without a copy on the shelf leaves the catalog until a copy comes back.
+- ✅ A film without a copy on the shelf cannot be rented until a copy comes back; with "Yalnızca müsait" on it is
+  left out of the catalog.
 - ✅ The copies of a film cannot be set below the copies rented out; "Kiralamaya açık" (Open for rental) hides a film
   from customers without deleting it.
 
@@ -51,13 +93,16 @@ startup.
   calendar day after the due day; a return on the due day costs nothing. The fee is computed in `decimal`, stored
   with the rental and capped at the largest amount the money column can hold.
 - ✅ The fee a return would cost today is shown before the return is confirmed.
+- ✅ The rental, due and return days, what is overdue and the 15 minute sign-in lock follow the database server's
+  UTC clock (`SYSUTCDATETIME()`), so computers with a wrong clock still agree. The rental and return
+  confirmations work their dates and late fee out from the same clock, so what is confirmed is what is stored.
 
 ### Admin panel
 
-- ✅ **Films** ("Yönetim Paneli", Admin Panel): add ("Film Ekle"), change ("Filmi Güncelle") and delete ("Filmi Sil")
-  films with title, genre, year, director, daily price, poster link ("Resim Linki"), description ("Hakkında") and
-  copies. Every invalid field is marked next to its control. A film with rental history cannot be deleted; it can
-  be closed for rental instead.
+- ✅ **Films** ("Yönetim Paneli", Admin Panel): search every film, unlisted ones included, with the same search
+  fields, 50 a page; add ("Film Ekle"), change ("Filmi Güncelle") and delete ("Filmi Sil") films with title, genre,
+  year, director, daily price, poster link ("Resim Linki"), description ("Hakkında") and copies. Every invalid field
+  is marked next to its control. A film with rental history cannot be deleted; it can be closed for rental instead.
 - ✅ **Accounts** ("Kullanıcı Yönetim Paneli", User Management Panel): add, change and delete accounts with role,
   e-mail and phone; a new password replaces the old one and lifts a lock. Admins and accounts with rentals cannot
   be deleted, and the last admin keeps the admin role.
@@ -92,11 +137,17 @@ third-party film posters and were removed.
 |---|---|---|
 | Sign up an account | ✅ (from the sign-in screen, user role) | ❌ (the first admin comes from the setup) |
 | Sign in | ✅ | ✅ |
-| Browse and filter the catalog | ✅ listed films with a copy on the shelf | ✅ |
+| Browse and search the catalog | ✅ listed films (available only by default) | ✅ every film, unlisted ones included |
 | Rent a film | ✅ one active rental per film | ✅ (through the services; the admin screens do not offer it) |
 | List active rentals | ✅ their own | ✅ all, with filters |
 | Return a rental | ✅ their own | ✅ any |
 | Change their own password | ✅ (profile) | ✅ (through the account management) |
+| Keep a watchlist | ✅ their own (another account's entry = missing) | ✅ their own |
+| Rate and review a film | ✅ only films they returned; change or delete their own | ✅ same rule as users |
+| See reviews and averages | ✅ visible reviews, authors masked | ✅ every review with the full author (moderation list) |
+| Hide or show a review | ❌ | ✅ |
+| Reports and CSV export | ❌ | ✅ |
+| Recommendations | ✅ from their own rentals | ✅ from their own rentals |
 | Add, change or delete films | ❌ | ✅ |
 | Add, change or delete accounts, set roles | ❌ | ✅ (no admin deleted, the last admin stays admin) |
 | Create the first admin | ❌ (empty database, or with the owner's setup key only) | - |
@@ -146,7 +197,7 @@ FilmKiralamaApp/
 
 ```mermaid
 flowchart TD
-    UI["FilmKiralama.UI<br/>WinForms, DI, error handling, Serilog, poster loader"] --> BUS["FilmKiralama.Business<br/>Auth, setup, film, rental and account services, FluentValidation, PBKDF2, late fee, audit events"]
+    UI["FilmKiralama.UI<br/>WinForms, DI, error handling, Serilog, poster loader, CSV files"] --> BUS["FilmKiralama.Business<br/>Auth, setup, film, rental, account, review, watchlist and report services, FluentValidation, PBKDF2, late fee, audit events"]
     UI --> DATA["FilmKiralama.Data<br/>EF Core, repositories, migrations, legacy upgrade, film locks"]
     BUS --> DOM["FilmKiralama.Domain<br/>Entities, repository contracts"]
     DATA --> DOM
@@ -317,9 +368,15 @@ See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the threat model.
   unlocked, so concurrent attempts cannot clear a fresh lock.
 - Roles and ownership are checked in the services and repeated in the database statements; the stored role of the
   acting account is checked inside every privileged operation.
-- Poster addresses come from the database, so they are downloaded only from public addresses, with redirects
-  checked again, at most 2 MB and within 10 seconds; local paths, network shares and local network addresses are
-  never opened.
+- Poster addresses come from the database, so they are downloaded only from public addresses (also when a private
+  IPv4 address hides in a NAT64, 6to4, IPv4-compatible, IPv4-mapped or IPv4-translated IPv6 address), with redirects
+  checked again and never from https to http, at most 2 MB and within 10 seconds; local paths, network shares and local network addresses are
+  never opened. The pixel size is read from the file header and an image beyond 4096 pixels a side or 16
+  megapixels is refused before it is decoded; at most three posters download and decode at a time, and a decoded
+  poster is kept only at card size (at most 480 × 720), so a page of cards holds about 1.4 MB a poster.
+- Review comments are plain text with a length limit; neither comments nor searches nor names reach the log file,
+  and refused or foreign review and watchlist operations leave the same entries (none) as missing ones.
+- Report CSV files are spreadsheet safe (formula prefixes) and replace a file only once they are complete.
 - Connection strings are kept out of the repository (`appsettings.json` is ignored; user secrets and environment
   variables are supported). All queries go through EF Core with parameters.
 - Users only see Turkish messages; raw exception text is never shown.
@@ -334,9 +391,9 @@ dotnet test -c Release
 
 | Project | Type | Scope |
 |---|---|---|
-| `tests/FilmKiralama.Business.Tests` | Unit | Validator limits and message order (user name 3/32, password 8/64, e-mail, phone, film fields, rental days), audit codes, PBKDF2 and format upgrade, lockout, rental and return rules, late fees, ownership and admin checks with strict Moq mocks |
-| `tests/FilmKiralama.Data.Tests` | Integration | Services and repositories on SQLite in-memory (shelf at zero, one and every copy, the last copy, the first late day, IDOR answers, lockout length, stale sessions, refused input writes nothing); rental and lockout races, setup keys with the restricted login and the legacy upgrade on SQL Server |
-| `tests/FilmKiralama.UI.Tests` | Unit | Example configuration, error messages, log content and retention, poster address checks, focus after unlock, write guards, latest-wins loading, neutral branding |
+| `tests/FilmKiralama.Business.Tests` | Unit | Validator limits and message order (user name 3/32, password 8/64, e-mail, phone, film fields, rental days, ratings 0/1/5/6, comments 500/501, search and page limits, report periods), audit codes, PBKDF2 and format upgrade, lockout and rental days by the shared clock, rental and return rules, late fees, average rounding, CSV formula safety, recommendations, ownership and admin checks with strict Moq mocks |
+| `tests/FilmKiralama.Data.Tests` | Integration | Services and repositories on SQLite in-memory (shelf at zero, one and every copy, the last copy, the first late day, IDOR answers, lockout length, stale sessions, refused input writes nothing, LIKE escaping, stable pages, rating filters, rating before the return, foreign reviews and watchlist entries, the watchlist limit, report periods); rental, lockout, review, watchlist and clock races, setup keys with the restricted login and the legacy upgrade on SQL Server |
+| `tests/FilmKiralama.UI.Tests` | Unit | Example configuration, error messages, log content and retention, poster header limits and download slots, IPv6 transition addresses, focus after unlock, write guards, latest-wins searches and pages, lists bound without a selection, plain text reviews, CSV files, neutral branding |
 
 The SQL Server tests use throw-away databases on the server in `FILM_TEST_SQLSERVER` (default: local SQL Express
 with Windows authentication). They are skipped when `FILM_SKIP_SQL_TESTS=1` is set or no server is reachable; with

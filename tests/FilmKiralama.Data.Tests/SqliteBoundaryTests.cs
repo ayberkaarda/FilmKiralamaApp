@@ -48,7 +48,7 @@ public sealed class SqliteBoundaryTests : IAsyncLifetime
         Assert.Equal((0, 2), await ShelfAsync(filmId));
         Assert.DoesNotContain(await films.GetCatalogAsync(third, FilmFilter.None, Ct), f => f.Id == filmId);
 
-        var refused = await Assert.ThrowsAsync<BusinessRuleException>(() => rentals.RentAsync(third, rentals.Quote(filmId, 10m, 2), Ct));
+        var refused = await Assert.ThrowsAsync<BusinessRuleException>(async () => await rentals.RentAsync(third, await rentals.QuoteAsync(filmId, 10m, 2, Ct), Ct));
         Assert.Equal(RentalService.NotAvailable, refused.Message);
         Assert.Equal((0, 2), await ShelfAsync(filmId));
         Assert.Equal(2, await RentalCountAsync(filmId));
@@ -106,7 +106,7 @@ public sealed class SqliteBoundaryTests : IAsyncLifetime
     {
         var rentals = _db.Get<IRentalService>();
 
-        var error = Assert.Throws<BusinessRuleException>(() => rentals.Quote(ThreeCopiesFilmId, 25m, rentals.Policy.MaxRentalDays + 1));
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => rentals.QuoteAsync(ThreeCopiesFilmId, 25m, rentals.Policy.MaxRentalDays + 1, Ct));
         var longest = await RentAsync(_db.Services, User(SeedUserId), ThreeCopiesFilmId, days: rentals.Policy.MaxRentalDays);
 
         Assert.Equal("Gün sayısı 1 ile 30 arasında olmalıdır.", error.Message);

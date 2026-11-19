@@ -1,6 +1,7 @@
 using System.Globalization;
 using FilmKiralama.Business.Security;
 using FilmKiralama.Business.Services;
+using FilmKiralama.Domain.Entities;
 using FluentValidation;
 
 namespace FilmKiralama.Business.Validation;
@@ -249,6 +250,116 @@ internal sealed class FilmFieldsValidator : AbstractValidator<FilmFields>
             .Must(value => !string.IsNullOrEmpty(value?.Trim())).WithMessage(label + " boş bırakılamaz.")
             .Must(value => value!.Trim().Length <= maxLength)
             .WithMessage(string.Create(CultureInfo.InvariantCulture, $"{label} en fazla {maxLength} karakter olabilir."));
+}
+
+/// <summary>
+/// A catalog search: a title of at most <see cref="InputRules.TitleMaxLength"/> characters of plain text,
+/// a genre of at most <see cref="InputRules.GenreMaxLength"/> characters of plain text, years from <see cref="InputRules.MinYear"/> to <see cref="CatalogQueryValidator.MaxYear"/> in order, a
+/// minimum rating of one to five stars and a page of 1 or more with 1 to
+/// <see cref="CatalogQuery.MaxPageSize"/> films.
+/// </summary>
+internal sealed class CatalogQueryValidator : AbstractValidator<CatalogQuery>
+{
+    /// <summary>Latest year a search may name; far enough ahead for any film entered.</summary>
+    internal const int MaxYear = 9999;
+
+    internal const string TitleInvalid = "Aranan ad görünmeyen veya kontrol karakterleri içeremez.";
+    internal const string GenreInvalid = "Aranan tür görünmeyen veya kontrol karakterleri içeremez.";
+    internal const string YearsReversed = "Başlangıç yılı bitiş yılından büyük olamaz.";
+    internal const string RatingInvalid = "En düşük puan 1 ile 5 arasında olmalıdır.";
+    internal const string PageInvalid = "Sayfa numarası 1 veya daha büyük olmalıdır.";
+
+    internal static readonly string TitleTooLong = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Aranan ad en fazla {InputRules.TitleMaxLength} karakter olabilir.");
+
+    internal static readonly string GenreTooLong = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Aranan tür en fazla {InputRules.GenreMaxLength} karakter olabilir.");
+
+    internal static readonly string YearInvalid = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Yıl {InputRules.MinYear} ile {MaxYear} arasında olmalıdır.");
+
+    internal static readonly string PageSizeInvalid = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Sayfa boyutu 1 ile {CatalogQuery.MaxPageSize} arasında olmalıdır.");
+
+    public CatalogQueryValidator()
+    {
+        ClassLevelCascadeMode = CascadeMode.Stop;
+        RuleLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(q => q.Title)
+            .Must(t => t!.Length <= InputRules.TitleMaxLength).WithMessage(_ => TitleTooLong)
+            .Must(t => InputRules.IsPlainText(t!)).WithMessage(TitleInvalid)
+            .When(q => q.Title is not null);
+        RuleFor(q => q.Genre)
+            .Must(g => g!.Length <= InputRules.GenreMaxLength).WithMessage(_ => GenreTooLong)
+            .Must(g => InputRules.IsPlainText(g!)).WithMessage(GenreInvalid)
+            .When(q => q.Genre is not null);
+        RuleFor(q => q.YearFrom)
+            .InclusiveBetween(InputRules.MinYear, MaxYear).WithMessage(_ => YearInvalid)
+            .When(q => q.YearFrom is not null);
+        RuleFor(q => q.YearTo)
+            .InclusiveBetween(InputRules.MinYear, MaxYear).WithMessage(_ => YearInvalid)
+            .When(q => q.YearTo is not null);
+        RuleFor(q => q)
+            .Must(q => q.YearFrom is null || q.YearTo is null || q.YearFrom <= q.YearTo)
+            .WithName(nameof(CatalogQuery))
+            .WithMessage(YearsReversed);
+        RuleFor(q => q.MinRating)
+            .InclusiveBetween(Reviews.ReviewPolicy.MinRating, Reviews.ReviewPolicy.MaxRating).WithMessage(RatingInvalid)
+            .When(q => q.MinRating is not null);
+        RuleFor(q => q.Page).GreaterThanOrEqualTo(1).WithMessage(PageInvalid);
+        RuleFor(q => q.PageSize).InclusiveBetween(1, CatalogQuery.MaxPageSize).WithMessage(_ => PageSizeInvalid);
+    }
+}
+
+/// <summary>A report period: the first day not after the last, at most <see cref="Reports.ReportPolicy.MaxRangeDays"/> days.</summary>
+internal sealed class ReportRangeValidator : AbstractValidator<Reports.ReportRange>
+{
+    internal const string Reversed = "Başlangıç tarihi bitiş tarihinden sonra olamaz.";
+
+    internal static readonly string TooLong = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Rapor en fazla {Reports.ReportPolicy.MaxRangeDays} günü kapsayabilir.");
+
+    public ReportRangeValidator()
+    {
+        ClassLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(r => r)
+            .Must(r => r.From <= r.To).WithName(nameof(Reports.ReportRange)).WithMessage(Reversed)
+            .Must(r => r.To.DayNumber - r.From.DayNumber < Reports.ReportPolicy.MaxRangeDays).WithName(nameof(Reports.ReportRange)).WithMessage(_ => TooLong);
+    }
+}
+
+/// <summary>
+/// A review: one to five stars and, optionally, a comment of at most
+/// <see cref="Reviews.ReviewPolicy.MaxCommentLength"/> characters of plain text.
+/// </summary>
+internal sealed class ReviewFieldsValidator : AbstractValidator<ReviewFields>
+{
+    internal const string RatingInvalid = "Puan 1 ile 5 arasında olmalıdır.";
+    internal const string CommentInvalid = "Yorum satır sonu, kontrol veya görünmeyen biçim karakterleri içeremez.";
+
+    internal static readonly string CommentTooLong = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Yorum en fazla {Reviews.ReviewPolicy.MaxCommentLength} karakter olabilir.");
+
+    public ReviewFieldsValidator()
+    {
+        ClassLevelCascadeMode = CascadeMode.Stop;
+        RuleLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(r => r.Rating)
+            .InclusiveBetween(Reviews.ReviewPolicy.MinRating, Reviews.ReviewPolicy.MaxRating).WithMessage(RatingInvalid);
+        RuleFor(r => r.Comment)
+            .Must(c => InputRules.IsPlainText(c!)).WithMessage(CommentInvalid)
+            .Must(c => c!.Normalize(System.Text.NormalizationForm.FormC).Length <= Reviews.ReviewPolicy.MaxCommentLength).WithMessage(_ => CommentTooLong)
+            .When(r => r.Comment is not null);
+    }
 }
 
 /// <summary>

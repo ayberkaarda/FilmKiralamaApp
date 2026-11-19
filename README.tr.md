@@ -17,10 +17,16 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 
 ### Film kataloğu
 
-- ✅ **Katalog** ("Film Kirala"): müşterinin şu anda kiralayabileceği filmler, yani kiralamaya açık ve rafta kopyası
-  olan filmler; afiş, ad, tür, yıl, yönetmen ve günlük ücretle.
-- ✅ **Filtreler**: tür, yönetmen ve yıl; filtre listelerinin doldurulması kendiliğinden yükleme başlatmaz ve
-  yalnızca son filtrenin cevabı gösterilir.
+- ✅ **Katalog** ("Film Kirala"): kiralamaya açık filmler; afiş, ad, tür, yıl, yönetmen, günlük ücret ve ortalama
+  puanla. "Yalnızca müsait" (varsayılan olarak açık) rafta kopyası olan filmleri bırakır. Kopyası kalmayan filmde
+  kiralama düğmesi yerine "Stokta yok" görünür.
+- ✅ **Arama**: ad ("Film adı", adın herhangi bir yerinde aranır; `%`, `_` ve `[` yalnızca kendileriyle eşleşir), tür,
+  yıl aralığı ("Yıldan", "Yıla") ve en düşük puan ("En düşük puan", gösterilen ortalamayla karşılaştırılır). Liste
+  servis tarafında sayfalanır (sayfada 12 film, "Önceki" / "Sonraki") ve önce ada, sonra numaraya göre sıralanır,
+  böylece sayfalar hiç örtüşmez; son sayfadan sonrası istenirse son sayfa gösterilir. Yazılan ad her tuşta değil,
+  yazmaya 300 ms ara verildiğinde (ya da Enter ile) aranır. Arama listelerinin
+  doldurulması kendiliğinden yükleme başlatmaz; hem müşteri hem yönetici ekranında yalnızca son aramanın ya da son
+  sayfanın cevabı gösterilir.
 - ✅ **Afişler** arka planda ve yalnızca herkese açık http veya https adreslerinden yüklenir; diğer her durumda
   uygulamanın kendi yer tutucu görseli gösterilir.
 
@@ -35,12 +41,49 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 - ✅ **İade** ("İade Et"): müşterinin profil ekranında ("Kullanıcı Profili") hesabın kendi aktif kiralamaları
   listelenir; yöneticiler kiralama panelinde ("Kiralama Paneli") herhangi bir kiralamayı iade alır ("İade Al").
 
+### İzleme listesi
+
+- ✅ Katalogdaki her kartta ve önerilerde bulunan **"Listeye Ekle"** filmi müşterinin kendi izleme listesine
+  ("İzleme Listem") ekler; her film bir kez (aynı anda iki ekleme için de tekil indeks karar verir), en fazla 100
+  film.
+- ✅ Liste hangi filmlerin şu anda kiralanabildiğini gösterir; "Kirala" filmi doğrudan listeden kiralar ve kiralama
+  filmi aynı işlemde listeden çıkarır. "Listeden Çıkar" bir filmi listeden kaldırır. Listeye eklendikten sonra
+  yöneticinin kiralamaya kapattığı bir film yalnızca adıyla ve "Kaldırıldı" durumuyla görünür.
+- ✅ Her hesap yalnızca kendi listesine ulaşır: başka bir hesabın kaydı, olmayan bir kayıtla aynı cevabı alır.
+
+### Puanlama ve yorumlar
+
+- ✅ Müşteri yalnızca **kiralayıp iade ettiği** bir filme 1-5 yıldız ve isteğe bağlı, en fazla 500 karakterlik bir
+  yorum verir (profilde "Puan Ver / Düzenle"). Hesap ve film başına bir değerlendirme vardır; değiştirilebilir ya da
+  silinebilir. Hâlâ kirada olan ya da hiç kiralanmamış filme puan verilemez.
+- ✅ Kiralama ekranı filmin ortalama puanını (tek ondalık, yarımlar sıfırdan uzağa yuvarlanır, servis tarafından
+  `decimal` ile hesaplanır) ve en yeni görünür yorumlarını gösterir. Yazarlar maskeli ("O***"), yorumlar düz metin
+  olarak gösterilir: biçimlendirme etiketleri, `&` ve formül karakterleri yazıldığı gibi görünür; satır sonu, kontrol
+  ve görünmeyen biçim karakterleri (sağdan sola yazım geçersiz kılma gibi) reddedilir.
+- ✅ Yöneticiler bir yorumu gizler ya da yeniden gösterir ("Yorumlar"); gizlenen yorum herkese açık listeden ve
+  ortalamadan çıkar, yazarı değiştirse ya da silip yeniden yazsa da gizli kalır (silinen gizli yorum yorumu
+  olmadan gizli işaretini korur ve yönetici dahil kimseye gösterilmez).
+
+### Raporlar ve öneriler
+
+- ✅ **Raporlar** ("Raporlar", yöneticiler): bir dönemin en çok kiralanan filmleri (ilk 20), bugün geciken
+  kiralamalar ve şimdiye kadarki gecikme ücretleri, bir dönemde iade edilen kiralamaların gecikme ücretleri ve
+  toplamları (`decimal` ile toplanır). Dönemin iki ucu da dahildir; bir dönem en fazla 3660 gün olabilir.
+- ✅ Gösterilen raporun, gösterildiği dönemle **CSV olarak kaydedilmesi**: bayt sıra işaretli UTF-8, tırnaklı alanlar
+  arasında `;`, hesap tablosunun formül olarak çalıştıracağı her alanın başında `'` (baştaki boşluk ya da satır
+  sonlarından sonra gelse de); dosya önce hedef klasörde geçici bir dosyaya yazılır, sonra hedefin üzerine taşınır.
+  Yazılamayan dosya (başka bir programda açık, yazma izni yok) kendi mesajını alır ve dışa aktarma loga ancak dosya
+  kaydedildikten sonra yazılır.
+- ✅ **Öneriler** ("Öneriler", müşteriler): müşterinin en çok kiraladığı türün (en çok kiralanan türler eşitse hepsi)
+  daha önce kiralamadığı ve şu anda kiralanabilen filmleri; en yüksek puanlılar önce, en fazla 8 film.
+
 ### Stok
 
 - ✅ Her filmin kopya sayısı ("Adet", 1-1000) ve raftaki kopya sayısı vardır. Kiralama raftan bir kopya alır, iade
   geri koyar; ikisi de filmin kilidi altında tek bir veritabanı işleminde yapılır, böylece eşzamanlı müşteriler
   dükkânın sahip olduğundan fazla kopya alamaz; son kopya yalnızca birine gider.
-- ✅ Rafta kopyası kalmayan film, bir kopya geri gelene kadar katalogdan çıkar.
+- ✅ Rafta kopyası kalmayan film, bir kopya geri gelene kadar kiralanamaz; "Yalnızca müsait" açıkken katalogda
+  görünmez.
 - ✅ Bir filmin kopya sayısı kirada olan kopya sayısının altına indirilemez; "Kiralamaya açık" seçeneği filmi
   silmeden müşterilerden gizler.
 
@@ -50,13 +93,16 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
   (`Rental:DailyLateFee`, varsayılan 10,00) öder; bitiş gününde yapılan iade ücretsizdir. Ücret `decimal` ile
   hesaplanır, kiralamayla birlikte saklanır ve para sütununun alabileceği en büyük tutarla sınırlanır.
 - ✅ İadenin bugün ne kadar gecikme ücreti tutacağı, iade onaylanmadan önce gösterilir.
+- ✅ Kiralama, bitiş ve iade günleri, nelerin geciktiği ve 15 dakikalık giriş kilidi veritabanı sunucusunun UTC
+  saatine (`SYSUTCDATETIME()`) göre belirlenir; saati yanlış olan bilgisayarlar da aynı sonuca varır. Kiralama ve
+  iade onay pencereleri tarihleri ve gecikme ücretini aynı saatten hesaplar; onaylanan, saklananla aynıdır.
 
 ### Yönetim paneli
 
-- ✅ **Filmler** ("Yönetim Paneli"): ad, tür, yıl, yönetmen, günlük ücret, resim linki ("Resim Linki"), açıklama
-  ("Hakkında") ve adetle film ekleme ("Film Ekle"), güncelleme ("Filmi Güncelle") ve silme ("Filmi Sil"). Her geçersiz
-  alan kendi kontrolünün yanında işaretlenir. Kiralama geçmişi olan film silinemez; bunun yerine kiralamaya
-  kapatılabilir.
+- ✅ **Filmler** ("Yönetim Paneli"): kiralamaya kapalılar dahil tüm filmlerde aynı arama alanlarıyla, sayfada 50
+  filmle arama; ad, tür, yıl, yönetmen, günlük ücret, resim linki ("Resim Linki"), açıklama ("Hakkında") ve adetle
+  film ekleme ("Film Ekle"), güncelleme ("Filmi Güncelle") ve silme ("Filmi Sil"). Her geçersiz alan kendi kontrolünün
+  yanında işaretlenir. Kiralama geçmişi olan film silinemez; bunun yerine kiralamaya kapatılabilir.
 - ✅ **Hesaplar** ("Kullanıcı Yönetim Paneli"): rol, e-posta ve telefonla hesap ekleme, güncelleme ve silme; yeni
   şifre eskisinin yerine geçer ve kilidi kaldırır. Yöneticiler ve kiralaması olan hesaplar silinemez, son yönetici
   yönetici rolünde kalır.
@@ -90,11 +136,17 @@ gelecek. Önceki görüntüler üçüncü taraf film afişleri içerdiği için 
 |---|---|---|
 | Hesap oluşturma | ✅ (giriş ekranından, kullanıcı rolüyle) | ❌ (ilk yönetici kurulumdan gelir) |
 | Giriş yapma | ✅ | ✅ |
-| Kataloğu görme ve filtreleme | ✅ kiralamaya açık, rafta kopyası olan filmler | ✅ |
+| Kataloğu görme ve arama | ✅ kiralamaya açık filmler (varsayılan olarak yalnızca müsaitler) | ✅ kiralamaya kapalılar dahil tüm filmler |
 | Film kiralama | ✅ film başına bir aktif kiralama | ✅ (servis üzerinden; yönetim ekranları sunmaz) |
 | Aktif kiralamaları listeleme | ✅ yalnızca kendi kiralamaları | ✅ tümü, filtrelerle |
 | Kiralamayı iade etme | ✅ yalnızca kendi kiralaması | ✅ herhangi biri |
 | Kendi şifresini değiştirme | ✅ (profil) | ✅ (hesap yönetiminden) |
+| İzleme listesi tutma | ✅ yalnızca kendi listesi (başkasının kaydı = yok) | ✅ yalnızca kendi listesi |
+| Filme puan ve yorum verme | ✅ yalnızca iade ettiği filmlere; kendi değerlendirmesini değiştirir ya da siler | ✅ kullanıcılarla aynı kural |
+| Yorumları ve ortalamaları görme | ✅ görünür yorumlar, yazarlar maskeli | ✅ tüm yorumlar, yazarın tam adıyla (yönetim listesi) |
+| Yorumu gizleme ya da gösterme | ❌ | ✅ |
+| Raporlar ve CSV dışa aktarma | ❌ | ✅ |
+| Öneriler | ✅ kendi kiralamalarından | ✅ kendi kiralamalarından |
 | Film ekleme, güncelleme, silme | ❌ | ✅ |
 | Hesap ekleme, güncelleme, silme, rol verme | ❌ | ✅ (yönetici silinmez, son yönetici yönetici kalır) |
 | İlk yöneticiyi oluşturma | ❌ (boş veritabanında ya da yalnızca sahibin kurulum anahtarıyla) | - |
@@ -144,7 +196,7 @@ FilmKiralamaApp/
 
 ```mermaid
 flowchart TD
-    UI["FilmKiralama.UI<br/>WinForms, DI, hata yönetimi, Serilog, afiş yükleyici"] --> BUS["FilmKiralama.Business<br/>Giriş, kurulum, film, kiralama ve hesap servisleri, FluentValidation, PBKDF2, gecikme ücreti, denetim olayları"]
+    UI["FilmKiralama.UI<br/>WinForms, DI, hata yönetimi, Serilog, afiş yükleyici, CSV dosyaları"] --> BUS["FilmKiralama.Business<br/>Giriş, kurulum, film, kiralama, hesap, yorum, izleme listesi ve rapor servisleri, FluentValidation, PBKDF2, gecikme ücreti, denetim olayları"]
     UI --> DATA["FilmKiralama.Data<br/>EF Core, depolar, migration'lar, eski veritabanı yükseltmesi, film kilitleri"]
     BUS --> DOM["FilmKiralama.Domain<br/>Varlıklar, depo sözleşmeleri"]
     DATA --> DOM
@@ -314,9 +366,16 @@ Tehdit modeli için [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) dosyasına bak�
   denemeler yeni bir kilidi silemez.
 - Roller ve sahiplik servislerde denetlenir ve veritabanı komutlarında tekrarlanır; işlemi yapan hesabın saklanan
   rolü her yetkili işlemin içinde denetlenir.
-- Afiş adresleri veritabanından geldiği için yalnızca herkese açık adreslerden, yönlendirmeler yeniden
-  denetlenerek, en fazla 2 MB ve 10 saniye içinde indirilir; yerel yollar, ağ paylaşımları ve yerel ağ adresleri
-  asla açılmaz.
+- Afiş adresleri veritabanından geldiği için yalnızca herkese açık adreslerden (özel bir IPv4 adresi NAT64, 6to4,
+  IPv4 uyumlu, IPv4 eşlemeli ya da IPv4'e çevrilmiş bir IPv6 adresinin içine gizlendiğinde de), yönlendirmeler
+  yeniden denetlenerek ve https'ten http'ye asla inmeden, en fazla 2 MB ve 10 saniye içinde indirilir; yerel yollar, ağ paylaşımları ve yerel ağ
+  adresleri asla açılmaz. Piksel boyutu dosya başlığından okunur; kenarı 4096 pikseli ya da toplamı 16 megapikseli
+  aşan görsel çözülmeden reddedilir. Aynı anda en fazla üç afiş indirilip çözülür ve çözülen afiş yalnızca kart
+  boyutunda (en fazla 480 × 720) tutulur; böylece bir kart sayfası afiş başına yaklaşık 1,4 MB tutar.
+- Yorumlar uzunluk sınırlı düz metindir; ne yorumlar ne aramalar ne de adlar log dosyasına girer. Reddedilen ya da
+  başka bir hesaba ait yorum ve izleme listesi işlemleri, olmayan kayıtlarla aynı girdileri (hiçbir girdi) bırakır.
+- Rapor CSV dosyaları hesap tablosu için güvenlidir (formül öneki) ve bir dosyanın yerine ancak tamamlandıktan
+  sonra geçer.
 - Bağlantı dizeleri depoya girmez (`appsettings.json` yok sayılır; user secrets ve ortam değişkenleri
   desteklenir). Tüm sorgular parametreli olarak EF Core üzerinden gider.
 - Kullanıcılar yalnızca Türkçe mesajlar görür; ham istisna metni asla gösterilmez.
@@ -331,9 +390,9 @@ dotnet test -c Release
 
 | Proje | Tür | Kapsam |
 |---|---|---|
-| `tests/FilmKiralama.Business.Tests` | Birim | Doğrulayıcı sınırları ve mesaj sırası (kullanıcı adı 3/32, şifre 8/64, e-posta, telefon, film alanları, kiralama günü), denetim kodları, PBKDF2 ve biçim yükseltmesi, kilitleme, kiralama ve iade kuralları, gecikme ücreti, sıkı Moq taklitleriyle sahiplik ve yönetici denetimleri |
-| `tests/FilmKiralama.Data.Tests` | Entegrasyon | Bellek içi SQLite üzerinde servisler ve depolar (rafta sıfır, bir ve tüm kopyalar, son kopya, ilk gecikme günü, IDOR cevapları, kilit süresi, eskimiş oturumlar, reddedilen girdinin hiçbir şey yazmaması); SQL Server üzerinde kiralama ve kilitleme yarışları, kısıtlı oturumla kurulum anahtarı ve eski veritabanı yükseltmesi |
-| `tests/FilmKiralama.UI.Tests` | Birim | Örnek yapılandırma, hata mesajları, log içeriği ve saklama süresi, afiş adresi denetimleri, kilit açıldıktan sonra odak, yazma korumaları, son isteğin kazandığı yüklemeler, nötr marka |
+| `tests/FilmKiralama.Business.Tests` | Birim | Doğrulayıcı sınırları ve mesaj sırası (kullanıcı adı 3/32, şifre 8/64, e-posta, telefon, film alanları, kiralama günü, puan 0/1/5/6, yorum 500/501, arama ve sayfa sınırları, rapor dönemleri), denetim kodları, PBKDF2 ve biçim yükseltmesi, ortak saate göre kilit ve kiralama günleri, kiralama ve iade kuralları, gecikme ücreti, ortalama yuvarlama, CSV formül güvenliği, öneriler, sıkı Moq taklitleriyle sahiplik ve yönetici denetimleri |
+| `tests/FilmKiralama.Data.Tests` | Entegrasyon | Bellek içi SQLite üzerinde servisler ve depolar (rafta sıfır, bir ve tüm kopyalar, son kopya, ilk gecikme günü, IDOR cevapları, kilit süresi, eskimiş oturumlar, reddedilen girdinin hiçbir şey yazmaması, LIKE kaçışı, kararlı sayfalar, puan filtreleri, iade etmeden puanlama, başkasının yorumu ve liste kaydı, liste sınırı, rapor dönemleri); SQL Server üzerinde kiralama, kilitleme, yorum, izleme listesi ve saat yarışları, kısıtlı oturumla kurulum anahtarı ve eski veritabanı yükseltmesi |
+| `tests/FilmKiralama.UI.Tests` | Birim | Örnek yapılandırma, hata mesajları, log içeriği ve saklama süresi, afiş başlığı sınırları ve indirme yuvaları, IPv6 geçiş adresleri, kilit açıldıktan sonra odak, yazma korumaları, son isteğin kazandığı aramalar ve sayfalar, seçim yapmadan bağlanan listeler, düz metin yorumlar, CSV dosyaları, nötr marka |
 
 SQL Server testleri `FILM_TEST_SQLSERVER` ile verilen sunucuda geçici veritabanları kullanır (varsayılan: Windows
 kimlik doğrulamalı yerel SQL Express). `FILM_SKIP_SQL_TESTS=1` tanımlıysa ya da sunucuya ulaşılamıyorsa atlanır;

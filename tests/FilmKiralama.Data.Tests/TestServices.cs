@@ -75,7 +75,7 @@ internal static class TestServices
         var ct = TestContext.Current.CancellationToken;
         var film = await provider.GetRequiredService<IFilmService>().GetAsync(session, filmId, ct);
         var rentals = provider.GetRequiredService<IRentalService>();
-        return await rentals.RentAsync(session, rentals.Quote(filmId, film.DailyPrice, days), ct);
+        return await rentals.RentAsync(session, await rentals.QuoteAsync(filmId, film.DailyPrice, days, ct), ct);
     }
 
     /// <summary>

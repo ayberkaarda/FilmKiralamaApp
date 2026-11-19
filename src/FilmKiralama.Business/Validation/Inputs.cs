@@ -89,3 +89,18 @@ internal sealed record FilmFields(
 
 /// <summary>A rental of <paramref name="Days"/> days at the daily price the customer was shown.</summary>
 internal sealed record RentalQuoteInput(int Days, decimal DailyPrice);
+
+/// <summary>
+/// A review as typed. The comment is trimmed; an empty one is no comment. <see cref="NormalizedComment"/>
+/// is the text that is stored once the comment is valid (Unicode normalization form C).
+/// </summary>
+internal sealed record ReviewFields(int Rating, string? Comment)
+{
+    public string? NormalizedComment => Comment is null ? null : Comment.Normalize(System.Text.NormalizationForm.FormC);
+
+    public static ReviewFields Create(Reviews.ReviewInput input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        return new(input.Rating, string.IsNullOrWhiteSpace(input.Comment) ? null : input.Comment.Trim());
+    }
+}
