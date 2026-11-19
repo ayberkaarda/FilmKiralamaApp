@@ -66,6 +66,20 @@ internal sealed class ThemedGrid : DataGridView, IThemeAware
         }
     }
 
+    /// <summary>
+    /// How wide the generated columns are relative to each other, by property name (100 is the default share);
+    /// applied every time rows are bound.
+    /// </summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public IReadOnlyDictionary<string, float> ColumnWeights { get; set; } = new Dictionary<string, float>();
+
+    /// <summary>
+    /// The color a cell's text takes, for example a state column; <see langword="null"/> keeps the table's color.
+    /// Ignored under high contrast, where the system colors stay.
+    /// </summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public Func<string, object?, Color?>? CellTone { get; set; }
+
     /// <summary>The message the table shows now instead of rows, or an empty text.</summary>
     internal string ShownMessage => Rows.Count > 0 ? string.Empty : _loading ? LoadingText : _emptyText;
 
@@ -134,6 +148,39 @@ internal sealed class ThemedGrid : DataGridView, IThemeAware
 
         // The padding was measured at the DPI known before the window existed.
         ApplyStyle(this);
+    }
+
+    protected override void OnDataBindingComplete(DataGridViewBindingCompleteEventArgs e)
+    {
+        base.OnDataBindingComplete(e);
+        foreach (DataGridViewColumn column in Columns)
+        {
+            column.SortMode = DataGridViewColumnSortMode.NotSortable;
+            if (ColumnWeights.TryGetValue(column.DataPropertyName, out var weight))
+            {
+                column.FillWeight = weight;
+            }
+        }
+
+        Invalidate();
+    }
+
+    protected override void OnCellFormatting(DataGridViewCellFormattingEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        base.OnCellFormatting(e);
+        if (Theme.Current.IsHighContrast || CellTone is null || e.CellStyle is null || e.ColumnIndex < 0 || e.RowIndex < 0)
+        {
+            return;
+        }
+
+        if (CellTone(Columns[e.ColumnIndex].DataPropertyName, e.Value) is { } color)
+        {
+            // A state stays in its color on a selected row too; the selection there is only a tint.
+            e.CellStyle.ForeColor = color;
+            e.CellStyle.SelectionForeColor = color;
+            e.CellStyle.Font = Theme.Fonts.BodyStrong;
+        }
     }
 
     protected override void OnDpiChangedAfterParent(EventArgs e)
