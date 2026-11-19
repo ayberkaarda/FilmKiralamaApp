@@ -19,8 +19,9 @@ namespace FilmKiralama.UI.Infrastructure;
 /// within <see cref="Timeout"/>. No proxy, cookies or credentials are used. The pixel size the file
 /// declares is read from its header and checked against <see cref="MaxDimension"/> and
 /// <see cref="MaxPixels"/> before any pixel is decoded, and at most <see cref="MaxConcurrentDownloads"/>
-/// posters are downloaded and decoded at the same time, so a screen full of cards pointing at one hostile
-/// address cannot exhaust the memory.
+/// posters are downloaded and decoded at the same time. A decoded poster is kept only at the size a card
+/// shows (at most <see cref="MaxShownWidth"/> x <see cref="MaxShownHeight"/>), so a full size bitmap lives
+/// only while it is scaled down, and a page of cards pointing at huge images holds about 1.4 MB a card.
 /// </remarks>
 internal sealed class PosterLoader : IDisposable
 {
@@ -32,6 +33,12 @@ internal sealed class PosterLoader : IDisposable
 
     /// <summary>Largest number of pixels accepted (16 MP, about 64 MB once decoded).</summary>
     public const long MaxPixels = (long)MaxDimension * MaxDimension;
+
+    /// <summary>Widest poster kept after decoding; twice the card's poster width of 240.</summary>
+    public const int MaxShownWidth = 480;
+
+    /// <summary>Tallest poster kept after decoding (a 2:3 poster at <see cref="MaxShownWidth"/>).</summary>
+    public const int MaxShownHeight = 720;
 
     /// <summary>Posters downloaded and decoded at the same time by one loader.</summary>
     public const int MaxConcurrentDownloads = 3;
@@ -202,12 +209,51 @@ internal sealed class PosterLoader : IDisposable
                 return PosterDecodeResult.TooLarge;
             }
 
-            image = new Bitmap(opened);
+            image = Shrink(opened);
             return PosterDecodeResult.Decoded;
         }
         catch (Exception ex) when (ex is ArgumentException or ExternalException or OutOfMemoryException)
         {
             return PosterDecodeResult.Invalid;
+        }
+    }
+
+    /// <summary>
+    /// The size <paramref name="width"/> x <paramref name="height"/> scaled down, keeping its shape, to fit
+    /// <see cref="MaxShownWidth"/> x <see cref="MaxShownHeight"/>; a size that fits is kept.
+    /// </summary>
+    internal static Size ShownSize(int width, int height)
+    {
+        var scale = Math.Min(1d, Math.Min((double)MaxShownWidth / width, (double)MaxShownHeight / height));
+        return new Size(
+            Math.Clamp((int)Math.Round(width * scale), 1, MaxShownWidth),
+            Math.Clamp((int)Math.Round(height * scale), 1, MaxShownHeight));
+    }
+
+    /// <summary>A bitmap of its own of <paramref name="opened"/>, decoded and scaled down to <see cref="ShownSize"/>.</summary>
+    private static Bitmap Shrink(Image opened)
+    {
+        var size = ShownSize(opened.Width, opened.Height);
+        if (size == opened.Size)
+        {
+            return new Bitmap(opened);
+        }
+
+        var shown = new Bitmap(size.Width, size.Height);
+        try
+        {
+            using var graphics = Graphics.FromImage(shown);
+            graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+            using var wrap = new System.Drawing.Imaging.ImageAttributes();
+            wrap.SetWrapMode(System.Drawing.Drawing2D.WrapMode.TileFlipXY);
+            graphics.DrawImage(opened, new Rectangle(Point.Empty, size), 0, 0, opened.Width, opened.Height, GraphicsUnit.Pixel, wrap);
+            return shown;
+        }
+        catch
+        {
+            shown.Dispose();
+            throw;
         }
     }
 

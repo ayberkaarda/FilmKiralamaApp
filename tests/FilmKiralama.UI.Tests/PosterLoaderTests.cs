@@ -278,6 +278,29 @@ public sealed class PosterLoaderTests
         Assert.Equal(1, server.Requests);
     }
 
+    /// <summary>
+    /// A large poster is kept only at the size a card can show, so the memory a page of cards holds does
+    /// not grow with the size of the files; the shape is kept and a small poster is not enlarged.
+    /// </summary>
+    [Theory]
+    [InlineData(4096, 4096, 480, 480)]
+    [InlineData(2000, 3000, 480, 720)]
+    [InlineData(1000, 4000, 180, 720)]
+    [InlineData(4000, 100, 480, 12)]
+    [InlineData(480, 720, 480, 720)]
+    [InlineData(120, 160, 120, 160)]
+    public void Decode_LargePoster_IsKeptAtMostAtTheShownSize(int width, int height, int keptWidth, int keptHeight)
+    {
+        var bytes = OneBitPng(width, height);
+
+        Assert.Equal(PosterDecodeResult.Decoded, PosterLoader.TryDecode(bytes, out var image));
+        using (image)
+        {
+            Assert.Equal(new Size(keptWidth, keptHeight), image!.Size);
+            Assert.True(image.Width <= PosterLoader.MaxShownWidth && image.Height <= PosterLoader.MaxShownHeight);
+        }
+    }
+
     /// <summary>A GIF frame may be larger than the screen the file declares; every frame is checked.</summary>
     [Fact]
     public void Decode_GifFrameLargerThanItsScreen_IsRefused()
