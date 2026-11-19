@@ -54,6 +54,14 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) esas alınara
   tuttuğu bellek görsellerin boyutuyla artmaz.
 - Afiş indirmeleri, IPv4'e çevrilmiş ve yerel kullanımlı NAT64 IPv6 adreslerine gizlenmiş özel adresleri, belgeleme
   ve atma adreslerini reddeder.
+- Afiş yönlendirmelerinde https'ten http'ye geçiş reddedilir.
+- Katalog, yazılan adı her tuşta değil, yazmaya ara verildiğinde (300 ms ya da Enter) arar.
+- `report.exported` yalnızca CSV dosyası kaydedildikten sonra yazılır; yazılamayan dosya genel hata yerine kendi
+  mesajını alır ve geciken kiralamalar dosyası, satırların sayıldığı günle adlandırılır.
+- Baştaki boşluk ya da satır sonlarından sonra formül karakteriyle başlayan CSV alanlarının başına da `'` eklenir.
+- Tür aramasının kendi uzunluk mesajı vardır ve görünmeyen karakterleri reddeder.
+- Listeye eklendikten sonra kiralamaya kapatılan bir filmin izleme listesi kaydı yalnızca adını ve "Kaldırıldı"
+  durumunu gösterir.
 
 ### Kaldırılanlar
 
@@ -63,6 +71,10 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) esas alınara
 
 - Yöneticinin gizlediği bir yorum hiçbir zaman kaldırılmaz: yazarı sildiğinde yorumu temizlenir ve her listenin
   dışında gizli kalır, böylece yeniden yazılan yorum da gizli olur (sütun `Silindi`, migration `AddReviewDeletion`).
+- Giriş, hesabı aramadan önce veritabanı saatini okur; böylece bilinen ve bilinmeyen adlar aynı gidiş-dönüşleri
+  yapar.
+- Silinmiş bir hesabın açık oturumu artık katalogda arama yapamaz, yorumları okuyamaz ya da öneri alamaz; yeniden
+  denenen eşzamanlı yorum kaydı hesabı ve uygunluğu yeniden denetler.
 - Kullanıcı adları, e-posta adresleri, telefon numaraları, şifreler, kurulum anahtarları, film adları ve istisna
   mesajları loga asla yazılmaz.
 - Yorumlar ve aramalar loga asla yazılmaz; başka bir hesabın yorumu ya da izleme listesi kaydı, olmayan bir kayıtla

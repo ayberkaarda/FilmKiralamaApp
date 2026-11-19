@@ -23,7 +23,8 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 - ✅ **Arama**: ad ("Film adı", adın herhangi bir yerinde aranır; `%`, `_` ve `[` yalnızca kendileriyle eşleşir), tür,
   yıl aralığı ("Yıldan", "Yıla") ve en düşük puan ("En düşük puan", gösterilen ortalamayla karşılaştırılır). Liste
   servis tarafında sayfalanır (sayfada 12 film, "Önceki" / "Sonraki") ve önce ada, sonra numaraya göre sıralanır,
-  böylece sayfalar hiç örtüşmez; son sayfadan sonrası istenirse son sayfa gösterilir. Arama listelerinin
+  böylece sayfalar hiç örtüşmez; son sayfadan sonrası istenirse son sayfa gösterilir. Yazılan ad her tuşta değil,
+  yazmaya 300 ms ara verildiğinde (ya da Enter ile) aranır. Arama listelerinin
   doldurulması kendiliğinden yükleme başlatmaz; hem müşteri hem yönetici ekranında yalnızca son aramanın ya da son
   sayfanın cevabı gösterilir.
 - ✅ **Afişler** arka planda ve yalnızca herkese açık http veya https adreslerinden yüklenir; diğer her durumda
@@ -46,7 +47,8 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
   ("İzleme Listem") ekler; her film bir kez (aynı anda iki ekleme için de tekil indeks karar verir), en fazla 100
   film.
 - ✅ Liste hangi filmlerin şu anda kiralanabildiğini gösterir; "Kirala" filmi doğrudan listeden kiralar ve kiralama
-  filmi aynı işlemde listeden çıkarır. "Listeden Çıkar" bir filmi listeden kaldırır.
+  filmi aynı işlemde listeden çıkarır. "Listeden Çıkar" bir filmi listeden kaldırır. Listeye eklendikten sonra
+  yöneticinin kiralamaya kapattığı bir film yalnızca adıyla ve "Kaldırıldı" durumuyla görünür.
 - ✅ Her hesap yalnızca kendi listesine ulaşır: başka bir hesabın kaydı, olmayan bir kayıtla aynı cevabı alır.
 
 ### Puanlama ve yorumlar
@@ -68,8 +70,10 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
   kiralamalar ve şimdiye kadarki gecikme ücretleri, bir dönemde iade edilen kiralamaların gecikme ücretleri ve
   toplamları (`decimal` ile toplanır). Dönemin iki ucu da dahildir; bir dönem en fazla 3660 gün olabilir.
 - ✅ Gösterilen raporun, gösterildiği dönemle **CSV olarak kaydedilmesi**: bayt sıra işaretli UTF-8, tırnaklı alanlar
-  arasında `;`, hesap tablosunun formül olarak çalıştıracağı her alanın başında `'`; dosya önce hedef klasörde geçici
-  bir dosyaya yazılır, sonra hedefin üzerine taşınır.
+  arasında `;`, hesap tablosunun formül olarak çalıştıracağı her alanın başında `'` (baştaki boşluk ya da satır
+  sonlarından sonra gelse de); dosya önce hedef klasörde geçici bir dosyaya yazılır, sonra hedefin üzerine taşınır.
+  Yazılamayan dosya (başka bir programda açık, yazma izni yok) kendi mesajını alır ve dışa aktarma loga ancak dosya
+  kaydedildikten sonra yazılır.
 - ✅ **Öneriler** ("Öneriler", müşteriler): müşterinin en çok kiraladığı türün (en çok kiralanan türler eşitse hepsi)
   daha önce kiralamadığı ve şu anda kiralanabilen filmleri; en yüksek puanlılar önce, en fazla 8 film.
 
@@ -364,7 +368,7 @@ Tehdit modeli için [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) dosyasına bak�
   rolü her yetkili işlemin içinde denetlenir.
 - Afiş adresleri veritabanından geldiği için yalnızca herkese açık adreslerden (özel bir IPv4 adresi NAT64, 6to4,
   IPv4 uyumlu, IPv4 eşlemeli ya da IPv4'e çevrilmiş bir IPv6 adresinin içine gizlendiğinde de), yönlendirmeler
-  yeniden denetlenerek, en fazla 2 MB ve 10 saniye içinde indirilir; yerel yollar, ağ paylaşımları ve yerel ağ
+  yeniden denetlenerek ve https'ten http'ye asla inmeden, en fazla 2 MB ve 10 saniye içinde indirilir; yerel yollar, ağ paylaşımları ve yerel ağ
   adresleri asla açılmaz. Piksel boyutu dosya başlığından okunur; kenarı 4096 pikseli ya da toplamı 16 megapikseli
   aşan görsel çözülmeden reddedilir. Aynı anda en fazla üç afiş indirilip çözülür ve çözülen afiş yalnızca kart
   boyutunda (en fazla 480 × 720) tutulur; böylece bir kart sayfası afiş başına yaklaşık 1,4 MB tutar.

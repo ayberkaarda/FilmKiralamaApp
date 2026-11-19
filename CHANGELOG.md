@@ -54,6 +54,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   of cards holds no longer grows with the size of the images.
 - Poster downloads refuse private addresses hidden in IPv4-translated and local-use NAT64 IPv6 addresses, and
   documentation and discard-only addresses.
+- Poster redirects from https to http are refused.
+- The catalog searches a typed title once the typing pauses (300 ms or Enter) instead of on every key.
+- `report.exported` is written only after the CSV file is saved; a file that cannot be written gets its own message
+  instead of the general error, and the overdue file is named with the day its rows were counted on.
+- CSV fields that start with a formula character after leading spaces or line breaks are prefixed too.
+- The genre search has its own length message and refuses hidden characters.
+- A watchlist entry of a film unlisted since shows only its title and "Kaldırıldı".
 
 ### Removed
 
@@ -64,6 +71,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - A review an admin hid is never removed: when its author deletes it, its comment is cleared and it stays hidden
   out of every list, so writing it again leaves it hidden (column `Silindi`, migration `AddReviewDeletion`).
+- Sign-in reads the database clock before it looks the account up, so known and unknown names take the same
+  round trips.
+- A deleted account's open session can no longer search the catalog, read reviews or get recommendations, and a
+  retried concurrent review save checks the account and the eligibility again.
 - User names, e-mail addresses, phone numbers, passwords, setup keys, film titles and exception messages are never
   written to the log.
 - Review comments and searches are never written to the log; another account's review or watchlist entry gets

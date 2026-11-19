@@ -23,8 +23,9 @@ startup.
 - ✅ **Search** by title ("Film adı", found anywhere in the title; `%`, `_` and `[` match only themselves), genre,
   year range ("Yıldan", "Yıla") and minimum rating ("En düşük puan", compared with the shown average). The list is
   paged in the service (12 films a page, "Önceki" / "Sonraki"), ordered by title and then by id so pages never
-  overlap; a page past the end shows the last page. Filling the search lists never starts a load by itself, and
-  only the answer to the latest search or page is shown, on the customer's and on the admin's screen.
+  overlap; a page past the end shows the last page. A typed title is searched once the typing pauses for 300 ms
+  (or at Enter), not on every key. Filling the search lists never starts a load by itself, and only the answer to
+  the latest search or page is shown, on the customer's and on the admin's screen.
 - ✅ **Posters** are loaded in the background from public http or https addresses only; anything else shows the
   application's own placeholder.
 
@@ -46,7 +47,8 @@ startup.
   own watchlist ("İzleme Listem", My Watchlist), once per film (a unique index decides, also for two adds at the
   same moment), at most 100 films.
 - ✅ The list shows which films can be rented now; "Kirala" rents one straight from the list, and a rental takes the
-  film off the list in the same transaction. "Listeden Çıkar" removes one.
+  film off the list in the same transaction. "Listeden Çıkar" removes one. A film the admin has unlisted since it
+  was added shows only its title and "Kaldırıldı" (Removed).
 - ✅ Every account reaches only its own list: another account's entry gets the same answer as a missing one.
 
 ### Ratings and reviews
@@ -68,8 +70,10 @@ startup.
   the late fee so far, and the late fees of the rentals returned in a period with their total (summed in `decimal`).
   Both ends of a period count; a period covers at most 3660 days.
 - ✅ **CSV export** of the shown report with the period it is shown with: UTF-8 with a byte order mark, `;` between
-  quoted fields, a leading `'` before anything a spreadsheet would run as a formula, written to a temporary file in
-  the target folder and then moved over the target.
+  quoted fields, a leading `'` before anything a spreadsheet would run as a formula (also after leading spaces or
+  line breaks), written to a temporary file in the target folder and then moved over the target. A file that
+  cannot be written (open in another program, no write right) gets its own message, and the export is recorded in
+  the log only once the file is saved.
 - ✅ **Recommendations** ("Öneriler", customers): the films of the genre the customer rented most (every genre tied
   for the most), that they have never rented and that can be rented now, best rated first, at most 8.
 
@@ -366,7 +370,7 @@ See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the threat model.
   acting account is checked inside every privileged operation.
 - Poster addresses come from the database, so they are downloaded only from public addresses (also when a private
   IPv4 address hides in a NAT64, 6to4, IPv4-compatible, IPv4-mapped or IPv4-translated IPv6 address), with redirects
-  checked again, at most 2 MB and within 10 seconds; local paths, network shares and local network addresses are
+  checked again and never from https to http, at most 2 MB and within 10 seconds; local paths, network shares and local network addresses are
   never opened. The pixel size is read from the file header and an image beyond 4096 pixels a side or 16
   megapixels is refused before it is decoded; at most three posters download and decode at a time, and a decoded
   poster is kept only at card size (at most 480 × 720), so a page of cards holds about 1.4 MB a poster.
