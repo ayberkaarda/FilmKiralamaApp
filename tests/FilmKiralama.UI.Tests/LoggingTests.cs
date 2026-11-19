@@ -375,6 +375,115 @@ public sealed partial class LoggingTests : IDisposable
         Assert.Single(await rentals.GetMyActiveRentalsAsync(owner, Ct));
     }
 
+    /// <summary>
+    /// Searches, reviews, their moderation, the watchlist, reports with an export and recommendations:
+    /// the file holds fixed codes and roles only, never a comment, a search, a name or a title.
+    /// </summary>
+    [Fact]
+    public async Task ReviewsWatchlistsAndReports_LeaveOnlyCodesAndRolesInTheLog()
+    {
+        const string Comment = "Gizli yorum metni: kahraman sonunda ölüyor";
+        await using var app = await App.StartAsync(_directory);
+        var auth = app.Get<IAuthService>();
+        var films = app.Get<IFilmService>();
+        var rentals = app.Get<IRentalService>();
+        var reviews = app.Get<Business.Reviews.IReviewService>();
+        var watchlist = app.Get<Business.Watchlists.IWatchlistService>();
+        var reports = app.Get<Business.Reports.IReportService>();
+
+        var admin = await app.Get<ISetupService>().CreateFirstAdminAsync(null, AdminName, AdminPassword, AdminPassword, Ct);
+        var filmId = await films.AddAsync(admin, new FilmInput(FilmTitle, "Bilim Kurgu", "2030", Director, "37,25", Poster, About, 2, true), Ct);
+        await auth.RegisterAsync(CustomerName, CustomerPassword, CustomerEmail, CustomerPhone, Ct);
+        var customer = await auth.SignInAsync(CustomerName, CustomerPassword, Ct);
+
+        await films.SearchCatalogAsync(customer, new CatalogQuery(Title: "Kuantum", MinRating: 4), Ct);
+        await films.SearchAllAsync(admin, new CatalogQuery(Title: FilmTitle), Ct);
+        await app.AttemptAsync(() => reviews.SaveAsync(customer, filmId, new Business.Reviews.ReviewInput(5, Comment), Ct)); // not returned yet
+        await watchlist.AddAsync(customer, filmId, Ct);
+        var rental = await rentals.RentAsync(customer, rentals.Quote(filmId, 37.25m, 2), Ct);
+        app.Clock.Advance(TimeSpan.FromDays(4));
+        await rentals.ReturnAsync(customer, rental.RentalId, Ct);
+        await reviews.SaveAsync(customer, filmId, new Business.Reviews.ReviewInput(5, Comment), Ct);
+        await reviews.SaveAsync(customer, filmId, new Business.Reviews.ReviewInput(4, Comment + " (değişti)"), Ct);
+        var own = await reviews.GetOwnAsync(customer, filmId, Ct);
+        await reviews.SetHiddenAsync(admin, own!.Id, true, Ct);
+        await reviews.GetFilmReviewsAsync(customer, filmId, Ct);
+        await app.Get<Business.Reports.IRecommendationService>().GetForMeAsync(customer, Ct);
+        var range = new Business.Reports.ReportRange(new DateOnly(2031, 3, 1), new DateOnly(2031, 3, 31));
+        await reports.GetMostRentedAsync(admin, range, Ct);
+        await reports.ExportCsvAsync(admin, Business.Reports.ReportKind.LateFees, range, Ct);
+        await app.AttemptAsync(() => reports.GetOverdueAsync(customer, Ct)); // admin only
+        await reviews.DeleteOwnAsync(customer, own.Id, Ct);
+
+        var text = app.CloseAndRead();
+        Assert.Equal(2, Regex.Count(text, "Audit review.saved user"));
+        Assert.Equal(1, Regex.Count(text, "Audit review.moderated admin"));
+        Assert.Equal(1, Regex.Count(text, "Audit review.deleted user"));
+        Assert.Equal(1, Regex.Count(text, "Audit watchlist.changed user"));
+        Assert.Equal(1, Regex.Count(text, "Audit report.exported admin"));
+        Assert.Contains("Audit access.denied user", text, StringComparison.Ordinal);
+        Assert.All(Lines(text), line => Assert.Matches(AuditLine(), line));
+        AssertNoPersonalData(text);
+        AssertAbsent(text, Comment, "Gizli yorum", "kahraman", "değişti", "Bilim Kurgu");
+    }
+
+    /// <summary>
+    /// Deleting another account's review and a review that does not exist, removing another account's
+    /// watchlist entry and an entry that does not exist, and rating a film never returned leave the same
+    /// entries (none); a new review and a change of it leave the same entry.
+    /// </summary>
+    [Fact]
+    public async Task ForeignAndMissingReviewsAndEntries_LeaveIdenticalEntries()
+    {
+        await using var app = await App.StartAsync(Path.Combine(_directory, "setup"));
+        var auth = app.Get<IAuthService>();
+        var rentals = app.Get<IRentalService>();
+        var reviews = app.Get<Business.Reviews.IReviewService>();
+        var watchlist = app.Get<Business.Watchlists.IWatchlistService>();
+        var admin = await app.Get<ISetupService>().CreateFirstAdminAsync(null, AdminName, AdminPassword, AdminPassword, Ct);
+        var filmId = await app.Get<IFilmService>().AddAsync(admin, new FilmInput(FilmTitle, "Dram", "2020", Director, "10", null, About, 2, true), Ct);
+        var other = await app.Get<IFilmService>().AddAsync(admin, new FilmInput("Başka Film", "Dram", "2020", Director, "10", null, About, 2, true), Ct);
+        await auth.RegisterAsync(CustomerName, CustomerPassword, CustomerEmail, CustomerPhone, Ct);
+        await auth.RegisterAsync("baska.musteri", CustomerPassword, "baska@example.com", "5559876543", Ct);
+        var owner = await auth.SignInAsync(CustomerName, CustomerPassword, Ct);
+        var stranger = await auth.SignInAsync("baska.musteri", CustomerPassword, Ct);
+        var second = await app.Get<IFilmService>().AddAsync(admin, new FilmInput("İkinci Film", "Dram", "2020", Director, "10", null, About, 2, true), Ct);
+        foreach (var watched in new[] { filmId, second })
+        {
+            var rental = await rentals.RentAsync(owner, rentals.Quote(watched, 10m, 2), Ct);
+            await rentals.ReturnAsync(owner, rental.RentalId, Ct);
+        }
+
+        await reviews.SaveAsync(owner, filmId, new Business.Reviews.ReviewInput(3, "ilk"), Ct);
+        var reviewId = (await reviews.GetOwnAsync(owner, filmId, Ct))!.Id;
+        await watchlist.AddAsync(owner, other, Ct);
+        var entryId = (await watchlist.GetMineAsync(owner, Ct)).Single().EntryId;
+        app.CloseAndRead();
+
+        Func<Task>[] refused =
+        [
+            () => reviews.DeleteOwnAsync(stranger, reviewId, Ct),
+            () => reviews.DeleteOwnAsync(stranger, reviewId + 1000, Ct),
+            () => watchlist.RemoveAsync(stranger, entryId, Ct),
+            () => watchlist.RemoveAsync(stranger, entryId + 1000, Ct),
+            () => reviews.SaveAsync(stranger, filmId, new Business.Reviews.ReviewInput(5, "yok"), Ct),
+        ];
+        var outcomes = new List<string[]>();
+        foreach (var attempt in refused)
+        {
+            outcomes.Add(await app.EntriesOfAsync(Path.Combine(_directory, "r" + outcomes.Count.ToString(CultureInfo.InvariantCulture)), attempt));
+        }
+
+        Assert.All(outcomes, Assert.Empty);
+
+        var created = await app.EntriesOfAsync(Path.Combine(_directory, "yeni"), () => reviews.SaveAsync(owner, second, new Business.Reviews.ReviewInput(4, "yeni"), Ct));
+        var changed = await app.EntriesOfAsync(Path.Combine(_directory, "degisen"), () => reviews.SaveAsync(owner, filmId, new Business.Reviews.ReviewInput(4, "değişen"), Ct));
+        Assert.Equal(["[INF] Audit review.saved user"], created);
+        Assert.Equal(created, changed);
+        Assert.NotNull(await reviews.GetOwnAsync(owner, filmId, Ct));
+        Assert.Single(await watchlist.GetMineAsync(owner, Ct));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory))
