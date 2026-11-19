@@ -7,7 +7,10 @@ using FilmKiralama.UI.Infrastructure;
 
 namespace FilmKiralama.UI
 {
-    /// <summary>The admin's film management: list, add, change and delete films, and the other admin panels.</summary>
+    /// <summary>
+    /// The admin's film management: search every film page by page, add, change and delete films, and the
+    /// other admin panels.
+    /// </summary>
     public partial class AdminPanel : Form, ISignOutPanel
     {
         private readonly IFilmService _films;
@@ -15,6 +18,8 @@ namespace FilmKiralama.UI
         private readonly UserSession _session;
         private readonly ExclusiveOperation _write = new();
         private readonly RequestSequence _loads = new();
+        private readonly CatalogSearchBar _search;
+        private readonly Pager _pager;
         private bool _binding;
 
         public AdminPanel(IFilmService films, IFormFactory forms, UserSession session)
@@ -77,6 +82,14 @@ namespace FilmKiralama.UI
                 form.ShowDialog(this);
             };
             Controls.Add(reviews);
+
+            // The search row above the film grid and the pages below it.
+            _search = new CatalogSearchBar(new Point(dataGridView1.Left, 84), Color.White, availableOnly: false);
+            Controls.Add(_search);
+            dataGridView1.SetBounds(dataGridView1.Left, 138, dataGridView1.Width, 470);
+            _pager = new Pager(this, new Point(dataGridView1.Left, 616));
+            _search.Changed += async (_, _) => await this.RunAsync(() => LoadFilmsAsync(1));
+            _pager.PageRequested += async (_, page) => await this.RunAsync(() => LoadFilmsAsync(page));
         }
 
         /// <summary>Width of the buttons that open the other admin panels.</summary>
@@ -100,17 +113,35 @@ namespace FilmKiralama.UI
 
         internal IReadOnlyList<Film> ShownFilms { get; private set; } = [];
 
-        /// <summary>Loads the film grid; only the latest request is shown. Binding the rows selects nothing.</summary>
-        internal async Task LoadFilmsAsync()
+        /// <summary>The page of the search shown in the grid.</summary>
+        internal PagedResult<CatalogItem>? ShownPage { get; private set; }
+
+        internal CatalogSearchBar Search => _search;
+
+        /// <summary>Loads the search choices and the shown page again.</summary>
+        internal async Task RefreshAsync()
+        {
+            _search.Fill(await _films.GetFilterOptionsAsync(_session));
+            await LoadFilmsAsync(ShownPage?.Page ?? 1);
+        }
+
+        /// <summary>
+        /// Loads one page of the search into the grid; only the latest request is shown. Binding the rows
+        /// selects nothing.
+        /// </summary>
+        internal async Task LoadFilmsAsync(int page = 1)
         {
             var request = _loads.Next();
-            var films = await _films.GetAllAsync(_session);
+            var result = await _films.SearchAllAsync(_session, _search.Current with { Page = page, PageSize = CatalogQuery.MaxPageSize });
             if (!_loads.IsLatest(request) || IsDisposed)
             {
                 return;
             }
 
+            ShownPage = result;
+            var films = result.Items.Select(i => i.Film).ToList();
             ShownFilms = films;
+            _pager.Show(result.Page, result.PageCount, result.TotalCount, "film");
             _binding = true;
             try
             {
@@ -165,7 +196,7 @@ namespace FilmKiralama.UI
                 await _films.AddAsync(_session, ReadInput());
                 Prompts.Inform("Film başarıyla eklendi.");
                 ClearForm();
-                await LoadFilmsAsync();
+                await RefreshAsync();
             });
         }
 
@@ -181,7 +212,7 @@ namespace FilmKiralama.UI
             {
                 await _films.UpdateAsync(_session, id, ReadInput());
                 Prompts.Inform("Film başarıyla güncellendi!");
-                await LoadFilmsAsync();
+                await RefreshAsync();
                 if (ShownFilms.FirstOrDefault(f => f.Id == id) is { } updated)
                 {
                     SelectFilm(updated);
@@ -207,14 +238,14 @@ namespace FilmKiralama.UI
                 await _films.DeleteAsync(_session, id);
                 Prompts.Inform("Film başarıyla silindi.");
                 ClearForm();
-                await LoadFilmsAsync();
+                await RefreshAsync();
             });
         }
 
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            await this.RunAsync(LoadFilmsAsync);
+            await this.RunAsync(RefreshAsync);
         }
 
         /// <summary>Runs a film write exclusively; invalid fields are marked as the original form marked empty ones.</summary>
@@ -296,7 +327,7 @@ namespace FilmKiralama.UI
             btnGuncelle.Enabled = false;
         }
 
-        private async void btnAracDurum_Click(object? sender, EventArgs e) => await this.RunAsync(LoadFilmsAsync);
+        private async void btnAracDurum_Click(object? sender, EventArgs e) => await this.RunAsync(RefreshAsync);
 
         private void btnKullaniciPanel_Click(object? sender, EventArgs e)
         {
@@ -312,7 +343,7 @@ namespace FilmKiralama.UI
             }
 
             // Returns change the copies on the shelf.
-            await this.RunAsync(LoadFilmsAsync);
+            await this.RunAsync(RefreshAsync);
         }
 
         private void dataGridView1_CellClick(object? sender, DataGridViewCellEventArgs e)

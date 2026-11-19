@@ -48,7 +48,12 @@ internal sealed class ControlledFilmService : IFilmService
 {
     private TaskCompletionSource<int> _add = new();
 
-    public List<(FilmFilter Filter, TaskCompletionSource<IReadOnlyList<Film>> Answer)> CatalogRequests { get; } = [];
+    public List<(CatalogQuery Query, TaskCompletionSource<PagedResult<CatalogItem>> Answer)> CatalogRequests { get; } = [];
+
+    /// <summary>The admin searches; answered at once with <see cref="Films"/> unless <see cref="HoldAdminSearches"/> is set.</summary>
+    public List<(CatalogQuery Query, TaskCompletionSource<PagedResult<CatalogItem>> Answer)> AdminSearches { get; } = [];
+
+    public bool HoldAdminSearches { get; set; }
 
     public List<Film> Films { get; } = [Film(1, "Sisli Liman", "Gerilim"), Film(2, "Son Vapur", "Dram")];
 
@@ -72,10 +77,32 @@ internal sealed class ControlledFilmService : IFilmService
         IsListed = true,
     };
 
-    public Task<IReadOnlyList<Film>> GetCatalogAsync(UserSession session, FilmFilter filter, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<Film>> GetCatalogAsync(UserSession session, FilmFilter filter, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<Film>>(Films);
+
+    /// <summary>One page holding <paramref name="films"/>, as the services answer a search.</summary>
+    public static PagedResult<CatalogItem> Page(IEnumerable<Film> films, int page = 1, int total = -1, int pageSize = CatalogQuery.DefaultPageSize)
     {
-        var answer = new TaskCompletionSource<IReadOnlyList<Film>>();
-        CatalogRequests.Add((filter, answer));
+        var items = films.Select(f => new CatalogItem(f, null, 0)).ToList();
+        return new PagedResult<CatalogItem>(items, total < 0 ? items.Count : total, page, pageSize);
+    }
+
+    public Task<PagedResult<CatalogItem>> SearchCatalogAsync(UserSession session, CatalogQuery query, CancellationToken cancellationToken = default)
+    {
+        var answer = new TaskCompletionSource<PagedResult<CatalogItem>>();
+        CatalogRequests.Add((query, answer));
+        return answer.Task;
+    }
+
+    public Task<PagedResult<CatalogItem>> SearchAllAsync(UserSession session, CatalogQuery query, CancellationToken cancellationToken = default)
+    {
+        var answer = new TaskCompletionSource<PagedResult<CatalogItem>>();
+        AdminSearches.Add((query, answer));
+        if (!HoldAdminSearches)
+        {
+            answer.SetResult(Page(Films, pageSize: query.PageSize));
+        }
+
         return answer.Task;
     }
 

@@ -14,17 +14,17 @@ public sealed class ListingTests
         var films = new ControlledFilmService();
         using var form = new AnaForm(films, new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
         var refresh = form.RefreshAsync();
-        films.CatalogRequests[0].Answer.SetResult(films.Films);
+        films.CatalogRequests[0].Answer.SetResult(ControlledFilmService.Page(films.Films));
         Assert.True(refresh.IsCompletedSuccessfully);
 
         var genre = Find<ComboBox>(form, "turCombo");
         genre.SelectedIndex = 1; // "Dram"
         genre.SelectedIndex = 2; // "Gerilim"
-        Assert.Equal([null, "Dram", "Gerilim"], films.CatalogRequests.Select(r => r.Filter.Genre));
+        Assert.Equal([null, "Dram", "Gerilim"], films.CatalogRequests.Select(r => r.Query.Genre));
 
         // The newer answer arrives first, then the stale one.
-        films.CatalogRequests[2].Answer.SetResult([films.Films[0]]);
-        films.CatalogRequests[1].Answer.SetResult([films.Films[1]]);
+        films.CatalogRequests[2].Answer.SetResult(ControlledFilmService.Page([films.Films[0]]));
+        films.CatalogRequests[1].Answer.SetResult(ControlledFilmService.Page([films.Films[1]]));
 
         Assert.Equal([1], form.ShownFilms.Select(f => f.Id));
     });
@@ -36,14 +36,14 @@ public sealed class ListingTests
         using var form = new AnaForm(films, new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
         _ = form.RefreshAsync();
         Assert.Single(films.CatalogRequests);
-        films.CatalogRequests[0].Answer.SetResult(films.Films);
+        films.CatalogRequests[0].Answer.SetResult(ControlledFilmService.Page(films.Films));
 
         Find<ComboBox>(form, "turCombo").SelectedIndex = 2;
-        films.CatalogRequests[1].Answer.SetResult([]);
+        films.CatalogRequests[1].Answer.SetResult(ControlledFilmService.Page([]));
         _ = form.RefreshAsync();
 
         Assert.Equal(3, films.CatalogRequests.Count);
-        Assert.Equal("Gerilim", films.CatalogRequests[2].Filter.Genre);
+        Assert.Equal("Gerilim", films.CatalogRequests[2].Query.Genre);
     });
 
     [Fact]

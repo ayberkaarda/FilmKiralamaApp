@@ -5,7 +5,10 @@ using FilmKiralama.UI.Infrastructure;
 
 namespace FilmKiralama.UI
 {
-    /// <summary>The customer's film list: filter by genre, director and year, rent a film, open the profile.</summary>
+    /// <summary>
+    /// The customer's film list: search by title, genre, year range, rating and availability page by page,
+    /// rent a film, open the profile.
+    /// </summary>
     public partial class AnaForm : Form, ISignOutPanel
     {
         private const int CardWidth = 240;
@@ -18,7 +21,8 @@ namespace FilmKiralama.UI
         private readonly IFormFactory _forms;
         private readonly UserSession _session;
         private readonly RequestSequence _loads = new();
-        private readonly FilmFilterBoxes _filter;
+        private readonly CatalogSearchBar _search;
+        private readonly Pager _pager;
         private readonly Panel _scrollPanel;
 
         public AnaForm(IFilmService films, IFormFactory forms, UserSession session)
@@ -42,9 +46,20 @@ namespace FilmKiralama.UI
             MinimumSize = Size;
 
             var header = BuildHeader();
-            var (filterPanel, filter) = BuildFilterPanel(header.Bottom + 10);
-            _filter = filter;
-            _filter.Changed += async (_, _) => await this.RunAsync(LoadFilmsAsync);
+            var filterPanel = new Panel
+            {
+                Size = new Size(ClientSize.Width, 60),
+                Location = new Point(0, header.Bottom + 10),
+                BackgroundImage = AppAssets.Background,
+            };
+            Controls.Add(filterPanel);
+            _search = new CatalogSearchBar(new Point(20, 4), Color.White, availableOnly: true);
+            filterPanel.Controls.Add(_search);
+            _pager = new Pager(filterPanel, new Point(ClientSize.Width - 520, 22));
+
+            // A new search starts on its first page; another page keeps the search.
+            _search.Changed += async (_, _) => await this.RunAsync(() => LoadFilmsAsync(1));
+            _pager.PageRequested += async (_, page) => await this.RunAsync(() => LoadFilmsAsync(page));
 
             _scrollPanel = new Panel
             {
@@ -64,28 +79,35 @@ namespace FilmKiralama.UI
         internal IUserPrompts Prompts { get; set; }
 
         /// <summary>The film cards shown now, for tests.</summary>
-        internal IReadOnlyList<Film> ShownFilms { get; private set; } = [];
+        internal IReadOnlyList<Film> ShownFilms => ShownPage?.Items.Select(i => i.Film).ToList() ?? [];
 
-        internal FilmFilterBoxes Filter => _filter;
+        /// <summary>The page of the catalog shown now.</summary>
+        internal PagedResult<CatalogItem>? ShownPage { get; private set; }
 
-        /// <summary>Loads the filter values and the film list.</summary>
+        internal CatalogSearchBar Search => _search;
+
+        internal Pager Pager => _pager;
+
+        /// <summary>Loads the search choices and the shown page again.</summary>
         internal async Task RefreshAsync()
         {
-            _filter.Fill(await _films.GetFilterOptionsAsync(_session));
-            await LoadFilmsAsync();
+            _search.Fill(await _films.GetFilterOptionsAsync(_session));
+            await LoadFilmsAsync(ShownPage?.Page ?? 1);
         }
 
-        /// <summary>Loads the films of the current filter; only the latest request is shown.</summary>
-        internal async Task LoadFilmsAsync()
+        /// <summary>Loads one page of the current search; only the latest request is shown.</summary>
+        internal async Task LoadFilmsAsync(int page = 1)
         {
             var request = _loads.Next();
-            var films = await _films.GetCatalogAsync(_session, _filter.Current);
+            var result = await _films.SearchCatalogAsync(_session, _search.Current with { Page = page });
             if (!_loads.IsLatest(request) || IsDisposed)
             {
                 return;
             }
 
-            ShowFilms(films);
+            ShownPage = result;
+            _pager.Show(result.Page, result.PageCount, result.TotalCount, "film");
+            ShowFilms(result.Items);
         }
 
         protected override async void OnLoad(EventArgs e)
@@ -126,7 +148,7 @@ namespace FilmKiralama.UI
                     form.ShowDialog(this);
                 }
 
-                // A return in the profile puts a copy back on the shelf.
+                // A return in the profile puts a copy back on the shelf; a rating changes an average.
                 await this.RunAsync(RefreshAsync);
             };
             header.Controls.Add(profile);
@@ -152,36 +174,8 @@ namespace FilmKiralama.UI
             return header;
         }
 
-        private (Panel Panel, FilmFilterBoxes Filter) BuildFilterPanel(int top)
+        private void ShowFilms(IReadOnlyList<CatalogItem> films)
         {
-            var panel = new Panel
-            {
-                Size = new Size(ClientSize.Width, 60),
-                Location = new Point(0, top),
-                BackgroundImage = AppAssets.Background,
-            };
-            Controls.Add(panel);
-
-            Label Caption(string text, int x) => new()
-            {
-                Text = text,
-                Location = new Point(x, 0),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 10, FontStyle.Bold),
-                ForeColor = Color.White,
-                BackColor = Color.Transparent,
-            };
-
-            var genre = new ComboBox { Name = "turCombo", Location = new Point(20, 20), Width = 150 };
-            var director = new ComboBox { Name = "yonetmenCombo", Location = new Point(190, 20), Width = 150 };
-            var year = new ComboBox { Name = "yilCombo", Location = new Point(360, 20), Width = 150 };
-            panel.Controls.AddRange([Caption("Tür", 20), Caption("Yönetmen", 190), Caption("Yıl", 360), genre, director, year]);
-            return (panel, new FilmFilterBoxes(genre, director, year));
-        }
-
-        private void ShowFilms(IReadOnlyList<Film> films)
-        {
-            ShownFilms = films;
             _scrollPanel.SuspendLayout();
             try
             {
@@ -207,8 +201,9 @@ namespace FilmKiralama.UI
             }
         }
 
-        private Panel BuildCard(Film film)
+        private Panel BuildCard(CatalogItem item)
         {
+            var film = item.Film;
             var card = new Panel
             {
                 Size = new Size(CardWidth, CardHeight),
@@ -228,16 +223,20 @@ namespace FilmKiralama.UI
 
             card.Controls.Add(new Label
             {
-                Size = new Size(220, 85),
-                Location = new Point(10, 325),
-                Text = $"{film.Title}\nYönetmen: {film.Director}\n{film.Year} | {film.Genre} | {DisplayFormat.Money(film.DailyPrice)}",
-                Font = new Font("Segoe UI", 10, FontStyle.Bold),
+                Size = new Size(220, 92),
+                Location = new Point(10, 324),
+                Text = $"{film.Title}\nYönetmen: {film.Director}\n{film.Year} | {film.Genre} | {DisplayFormat.Money(film.DailyPrice)}\n"
+                    + "Puan: " + ReviewDisplay.Summary(item.AverageRating, item.RatingCount),
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 ForeColor = Color.White,
+                UseMnemonic = false,
             });
 
             var rent = new Button
             {
-                Text = "Kirala",
+                Name = "btnKirala",
+                Text = item.IsAvailable ? "Kirala" : "Stokta yok",
+                Enabled = item.IsAvailable,
                 Size = new Size(120, 36),
                 Location = new Point((CardWidth - 120) / 2, 420),
                 Font = new Font("Segoe UI", 10, FontStyle.Bold),
@@ -259,7 +258,7 @@ namespace FilmKiralama.UI
 
                 if (rented)
                 {
-                    await this.RunAsync(LoadFilmsAsync);
+                    await this.RunAsync(() => LoadFilmsAsync(ShownPage?.Page ?? 1));
                 }
             };
             card.Controls.Add(rent);

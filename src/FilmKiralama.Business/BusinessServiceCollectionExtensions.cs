@@ -3,6 +3,7 @@ using FilmKiralama.Business.Reviews;
 using FilmKiralama.Business.Security;
 using FilmKiralama.Business.Services;
 using FilmKiralama.Business.Validation;
+using FilmKiralama.Domain.Entities;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -42,6 +43,7 @@ public static class BusinessServiceCollectionExtensions
         services.AddSingleton<IValidator<FilmFields>, FilmFieldsValidator>();
         services.AddSingleton<IValidator<RentalQuoteInput>, RentalQuoteInputValidator>();
         services.AddSingleton<IValidator<ReviewFields>, ReviewFieldsValidator>();
+        services.AddSingleton<IValidator<CatalogQuery>, CatalogQueryValidator>();
         services.AddSingleton<SetupKeyGate>();
         services.AddSingleton<IAuthService, AuthService>();
         services.AddSingleton<ISetupService, SetupService>();

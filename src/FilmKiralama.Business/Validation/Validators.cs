@@ -1,6 +1,7 @@
 using System.Globalization;
 using FilmKiralama.Business.Security;
 using FilmKiralama.Business.Services;
+using FilmKiralama.Domain.Entities;
 using FluentValidation;
 
 namespace FilmKiralama.Business.Validation;
@@ -249,6 +250,64 @@ internal sealed class FilmFieldsValidator : AbstractValidator<FilmFields>
             .Must(value => !string.IsNullOrEmpty(value?.Trim())).WithMessage(label + " boş bırakılamaz.")
             .Must(value => value!.Trim().Length <= maxLength)
             .WithMessage(string.Create(CultureInfo.InvariantCulture, $"{label} en fazla {maxLength} karakter olabilir."));
+}
+
+/// <summary>
+/// A catalog search: a title of at most <see cref="InputRules.TitleMaxLength"/> characters of plain text,
+/// years from <see cref="InputRules.MinYear"/> to <see cref="CatalogQueryValidator.MaxYear"/> in order, a
+/// minimum rating of one to five stars and a page of 1 or more with 1 to
+/// <see cref="CatalogQuery.MaxPageSize"/> films.
+/// </summary>
+internal sealed class CatalogQueryValidator : AbstractValidator<CatalogQuery>
+{
+    /// <summary>Latest year a search may name; far enough ahead for any film entered.</summary>
+    internal const int MaxYear = 9999;
+
+    internal const string TitleInvalid = "Aranan ad görünmeyen veya kontrol karakterleri içeremez.";
+    internal const string YearsReversed = "Başlangıç yılı bitiş yılından büyük olamaz.";
+    internal const string RatingInvalid = "En düşük puan 1 ile 5 arasında olmalıdır.";
+    internal const string PageInvalid = "Sayfa numarası 1 veya daha büyük olmalıdır.";
+
+    internal static readonly string TitleTooLong = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Aranan ad en fazla {InputRules.TitleMaxLength} karakter olabilir.");
+
+    internal static readonly string YearInvalid = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Yıl {InputRules.MinYear} ile {MaxYear} arasında olmalıdır.");
+
+    internal static readonly string PageSizeInvalid = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Sayfa boyutu 1 ile {CatalogQuery.MaxPageSize} arasında olmalıdır.");
+
+    public CatalogQueryValidator()
+    {
+        ClassLevelCascadeMode = CascadeMode.Stop;
+        RuleLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(q => q.Title)
+            .Must(t => t!.Length <= InputRules.TitleMaxLength).WithMessage(_ => TitleTooLong)
+            .Must(t => InputRules.IsPlainText(t!)).WithMessage(TitleInvalid)
+            .When(q => q.Title is not null);
+        RuleFor(q => q.Genre)
+            .Must(g => g!.Length <= InputRules.GenreMaxLength).WithMessage(_ => TitleTooLong)
+            .When(q => q.Genre is not null);
+        RuleFor(q => q.YearFrom)
+            .InclusiveBetween(InputRules.MinYear, MaxYear).WithMessage(_ => YearInvalid)
+            .When(q => q.YearFrom is not null);
+        RuleFor(q => q.YearTo)
+            .InclusiveBetween(InputRules.MinYear, MaxYear).WithMessage(_ => YearInvalid)
+            .When(q => q.YearTo is not null);
+        RuleFor(q => q)
+            .Must(q => q.YearFrom is null || q.YearTo is null || q.YearFrom <= q.YearTo)
+            .WithName(nameof(CatalogQuery))
+            .WithMessage(YearsReversed);
+        RuleFor(q => q.MinRating)
+            .InclusiveBetween(Reviews.ReviewPolicy.MinRating, Reviews.ReviewPolicy.MaxRating).WithMessage(RatingInvalid)
+            .When(q => q.MinRating is not null);
+        RuleFor(q => q.Page).GreaterThanOrEqualTo(1).WithMessage(PageInvalid);
+        RuleFor(q => q.PageSize).InclusiveBetween(1, CatalogQuery.MaxPageSize).WithMessage(_ => PageSizeInvalid);
+    }
 }
 
 /// <summary>

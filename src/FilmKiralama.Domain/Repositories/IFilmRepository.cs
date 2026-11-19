@@ -8,6 +8,15 @@ public interface IFilmRepository
     /// <summary>Listed films with at least one copy on the shelf that match <paramref name="filter"/>, ordered by id.</summary>
     Task<IReadOnlyList<Film>> GetCatalogAsync(FilmFilter filter, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// One page of the films matching <paramref name="query"/>, with the totals of their visible ratings
+    /// and the number of all matching films. Without <paramref name="adminId"/> only listed films are
+    /// searched (the customer's catalog); with it every film, for that admin, whose stored role is
+    /// checked first. A page beyond the last is answered with the last page.
+    /// </summary>
+    /// <exception cref="ActorRevokedException"><paramref name="adminId"/> is no longer a stored admin.</exception>
+    Task<PagedResult<CatalogEntry>> SearchAsync(CatalogQuery query, int? adminId, CancellationToken cancellationToken = default);
+
     /// <summary>Distinct genres, directors and years of all films.</summary>
     Task<FilmFilterOptions> GetFilterOptionsAsync(CancellationToken cancellationToken = default);
 

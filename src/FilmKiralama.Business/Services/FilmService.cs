@@ -18,8 +18,28 @@ public sealed record FilmInput(
     int Copies,
     bool IsListed);
 
+/// <summary>A film of a search result with the average of its visible ratings (one decimal) and their number.</summary>
+public sealed record CatalogItem(Film Film, decimal? AverageRating, int RatingCount)
+{
+    /// <summary>Listed with a copy on the shelf: it can be rented now.</summary>
+    public bool IsAvailable => Film.IsListed && Film.AvailableCopies > 0;
+
+    internal static CatalogItem From(CatalogEntry entry) =>
+        new(entry.Film, Reviews.RatingMath.Average(entry.Rating), entry.Rating.Count);
+}
+
 public interface IFilmService
 {
+    /// <summary>
+    /// One page of the customer's catalog (listed films only) for <paramref name="query"/>, ordered by
+    /// title and id. A page beyond the last gives the last page.
+    /// </summary>
+    /// <exception cref="BusinessRuleException">The search is invalid (title, years, rating or page).</exception>
+    Task<PagedResult<CatalogItem>> SearchCatalogAsync(UserSession session, CatalogQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>One page of every film, unlisted ones included, for <paramref name="query"/> (admin only).</summary>
+    Task<PagedResult<CatalogItem>> SearchAllAsync(UserSession session, CatalogQuery query, CancellationToken cancellationToken = default);
+
     /// <summary>Films a customer can rent now (listed, with a copy on the shelf) that match <paramref name="filter"/>.</summary>
     Task<IReadOnlyList<Film>> GetCatalogAsync(UserSession session, FilmFilter filter, CancellationToken cancellationToken = default);
 
@@ -47,7 +67,8 @@ internal sealed class FilmService(
     IFilmRepository films,
     TimeProvider timeProvider,
     IAuditLog audit,
-    IValidator<FilmFields> validator) : IFilmService
+    IValidator<FilmFields> validator,
+    IValidator<CatalogQuery> queryValidator) : IFilmService
 {
     internal const string NotFound = "Film bulunamadı.";
     internal const string InputInvalid = "Lütfen gerekli alanları doldurun.";
@@ -59,6 +80,22 @@ internal sealed class FilmService(
         Access.RequireSignedIn(session);
         ArgumentNullException.ThrowIfNull(filter);
         return films.GetCatalogAsync(filter, cancellationToken);
+    }
+
+    public async Task<PagedResult<CatalogItem>> SearchCatalogAsync(UserSession session, CatalogQuery query, CancellationToken cancellationToken = default)
+    {
+        Access.RequireSignedIn(session);
+        var checkedQuery = Checked(query);
+        var page = await films.SearchAsync(checkedQuery, adminId: null, cancellationToken).ConfigureAwait(false);
+        return Items(page);
+    }
+
+    public async Task<PagedResult<CatalogItem>> SearchAllAsync(UserSession session, CatalogQuery query, CancellationToken cancellationToken = default)
+    {
+        Access.RequireAdmin(session, audit);
+        var checkedQuery = Checked(query);
+        var page = await audit.AsActorAsync(session, () => films.SearchAsync(checkedQuery, session.UserId, cancellationToken)).ConfigureAwait(false);
+        return Items(page);
     }
 
     public Task<FilmFilterOptions> GetFilterOptionsAsync(UserSession session, CancellationToken cancellationToken = default)
@@ -127,6 +164,20 @@ internal sealed class FilmService(
                 throw new BusinessRuleException(NotFound);
         }
     }
+
+    /// <summary>The query with its title trimmed (an empty one searches nothing), refused when invalid.</summary>
+    private CatalogQuery Checked(CatalogQuery query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        var title = string.IsNullOrWhiteSpace(query.Title) ? null : query.Title.Trim();
+        var genre = string.IsNullOrWhiteSpace(query.Genre) ? null : query.Genre;
+        var normalized = query with { Title = title, Genre = genre };
+        queryValidator.ValidateOrThrow(normalized);
+        return normalized;
+    }
+
+    private static PagedResult<CatalogItem> Items(PagedResult<CatalogEntry> page) =>
+        new([.. page.Items.Select(CatalogItem.From)], page.TotalCount, page.Page, page.PageSize);
 
     /// <summary>
     /// Checks every field of <paramref name="input"/> and collects one message per invalid field, as the
