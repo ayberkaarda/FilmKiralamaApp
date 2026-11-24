@@ -72,6 +72,29 @@ internal static class PosterArt
         return bitmap;
     }
 
+    /// <summary>
+    /// A poster from a textless picture (generated once, kept under <c>tools/Screenshots/posters</c>): the picture
+    /// is cropped to the poster's ratio and the title and year are set over it in code, so the lettering is
+    /// always correct.
+    /// </summary>
+    public static Bitmap Compose(Image art, string title, int year)
+    {
+        var bitmap = new Bitmap(Width, Height, PixelFormat.Format24bppRgb);
+        using var g = Graphics.FromImage(bitmap);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+
+        var scale = Math.Max((float)Width / art.Width, (float)Height / art.Height);
+        var cropWidth = Width / scale;
+        var cropHeight = Height / scale;
+        g.DrawImage(art, new Rectangle(0, 0, Width, Height), (art.Width - cropWidth) / 2, (art.Height - cropHeight) / 2, cropWidth, cropHeight, GraphicsUnit.Pixel);
+
+        Caption(g, Color.FromArgb(16, 16, 24), Hex(0xF2B54A), title, year);
+        return bitmap;
+    }
+
     private static void SunOverHills(Graphics g, Random random, Color deep, Color accent)
     {
         var size = 220 + random.Next(80);
