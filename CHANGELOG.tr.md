@@ -47,7 +47,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) esas alınara
 - Yüklenirken ve boşken bunu söyleyen, durumları renkli temalı tablolar; yöneticinin film tablosu okunur sütun
   adları gösterir, afiş adresini ve açıklamayı düzenleyiciye bırakır.
 - `tools/Screenshots`: logoyu simgeye ve afiş yer tutucusuna dönüştürür, README ekran görüntülerini uydurma bir
-  dükkândan, kodla çizilen afişlerle, pencere açmadan 1x ve 2x çizer.
+  dükkândan, yapay zekâ ile üretilmiş afişler ve kodla basılan başlıklarla (`posters` komutu), pencere açmadan 1x ve 2x çizer.
 - Her ekranı 1024x600, 1366x768 ve 1920x1040 çalışma alanlarında dört yazı boyutuyla kuran yerleşim testleri; tema,
   sekme sırası ve pencere içi mesaj testleri.
 
