@@ -80,7 +80,20 @@ internal sealed class SyntheticCinema :
         }
 
         var film = _films.FirstOrDefault(f => f.Film.Id == id)?.Film;
-        return film is null ? null : PosterArt.Draw(id, film.Title, film.Year);
+        if (film is null)
+        {
+            return null;
+        }
+
+        // A generated picture when one was made (see PosterGenerator), otherwise the art drawn in code.
+        var file = PosterGenerator.PicturePath(id);
+        if (File.Exists(file))
+        {
+            using var picture = Image.FromFile(file);
+            return PosterArt.Compose(picture, film.Title, film.Year);
+        }
+
+        return PosterArt.Draw(id, film.Title, film.Year);
     }
 
     private static CatalogItem Item(int id, string title, string genre, int year, string director, decimal price, int copies, int available, decimal? average, int count, string? about) =>
