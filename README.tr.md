@@ -135,6 +135,9 @@ afiş, stüdyo ya da kişi görünmez. Her görüntü 2x sürümüne bağlanır.
 `dotnet run --project tools/Screenshots -c Release -- screenshots`. Afiş resimleri `tools/Screenshots/posters` klasöründedir;
 `posters` komutu eksik olanları Gemini API ile üretir (`GEMINI_API_KEY` gerekir).
 
+> **Not:** bu ekran görüntülerindeki film afişleri yapay zekâ ile üretilmiş görsellerdir (Google Gemini). Yalnızca
+> uydurma filmleri gösterir; gerçek bir film, afiş, kişi ya da marka yer almaz.
+
 | | |
 |---|---|
 | [![Giriş](screenshots/giris.png)](screenshots/giris-2x.png)<br>Marka paneliyle **Giriş** | [![Kayıt Ol](screenshots/kayit-ol.png)](screenshots/kayit-ol-2x.png)<br>**Kayıt Ol** |

@@ -136,6 +136,9 @@ poster, studio or person. Each image links to its 2x version. To draw them again
 `dotnet run --project tools/Screenshots -c Release -- screenshots`. The poster pictures are kept in
 `tools/Screenshots/posters`; the `posters` command makes missing ones with the Gemini API (needs `GEMINI_API_KEY`).
 
+> **Note:** the film posters in these screenshots are AI-generated images (made with Google Gemini). They depict
+> invented films only; no real film, poster, person or brand is shown.
+
 | | |
 |---|---|
 | [![Sign-in](screenshots/giris.png)](screenshots/giris-2x.png)<br>**Sign-in** ("Giriş") with the brand panel | [![Sign-up](screenshots/kayit-ol.png)](screenshots/kayit-ol-2x.png)<br>**Sign-up** ("Kayıt Ol") |
