@@ -10,7 +10,8 @@ namespace FilmKiralama.Screenshots;
 /// (default: screenshots). "icons" rasterizes assets/logo.svg into assets/app.ico and assets/logo-256.png, and
 /// assets/poster.svg into assets/poster.png; "screenshots" writes the README images to screenshots/ at 1x and 2x
 /// (with --dark, the dark palette to the given folder, for checking it). No window is shown and the focus is
-/// never taken.
+/// never taken. "posters" makes the textless poster pictures with Gemini (needs GEMINI_API_KEY; options: --force
+/// to redo existing ones, --model name, film ids to limit it); the screenshots use them when they exist.
 /// </summary>
 internal static class Program
 {
@@ -31,6 +32,11 @@ internal static class Program
         if (command is "icons" or "all")
         {
             WriteIcons(root);
+        }
+
+        if (command is "posters")
+        {
+            return PosterGenerator.RunAsync(options).GetAwaiter().GetResult();
         }
 
         if (command is "screenshots" or "all")
@@ -129,7 +135,7 @@ internal static class Program
         return 0;
     }
 
-    private static string FindRepositoryRoot()
+    internal static string FindRepositoryRoot()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
         {

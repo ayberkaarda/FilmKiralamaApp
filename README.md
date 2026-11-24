@@ -131,9 +131,13 @@ startup.
 ## 🖼️ Screenshots
 
 The screens are drawn offscreen from an invented rental shop: made-up film titles, directors and accounts,
-example.com addresses and poster art drawn in code (gradients and geometric shapes), so they show no real film,
+example.com addresses and poster pictures made with an AI image model (without any lettering; the titles are set in code), so they show no real film,
 poster, studio or person. Each image links to its 2x version. To draw them again:
-`dotnet run --project tools/Screenshots -c Release -- screenshots`.
+`dotnet run --project tools/Screenshots -c Release -- screenshots`. The poster pictures are kept in
+`tools/Screenshots/posters`; the `posters` command makes missing ones with the Gemini API (needs `GEMINI_API_KEY`).
+
+> **Note:** the film posters in these screenshots are AI-generated images (made with Google Gemini). They depict
+> invented films only; no real film, poster, person or brand is shown.
 
 | | |
 |---|---|
@@ -218,7 +222,7 @@ FilmKiralamaApp/
 │   ├── FilmKiralama.Data.Tests/      # Services on SQLite; races, setup keys and the legacy upgrade on SQL Server
 │   └── FilmKiralama.UI.Tests/        # Configuration, errors, logs, posters, focus, write guards, themes, layout and tab order of every screen (no windows shown)
 ├── assets/                      # Original logo, icon and poster placeholder with their SVG sources
-├── tools/Screenshots/           # Icon and screenshot tool (offscreen, invented data, poster art drawn in code)
+├── tools/Screenshots/           # Icon and screenshot tool (offscreen, invented data, AI-made poster pictures with titles set in code)
 ├── docs/
 │   ├── issue-setup-key.sql      # Setup key, run by the database owner
 │   ├── grant-app-login.sql      # Rights of the application's own login

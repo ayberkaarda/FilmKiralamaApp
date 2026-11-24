@@ -47,7 +47,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Themed tables that say when they load and why they are empty, with colored states; the admin's film table shows
   readable column names and leaves the poster address and the description to the editor.
 - `tools/Screenshots`: rasterizes the logo into the icon and the poster placeholder, and draws the README screenshots
-  at 1x and 2x offscreen from an invented shop with poster art drawn in code.
+  at 1x and 2x offscreen from an invented shop with AI-made poster pictures and titles set in code (`posters` command).
 - Layout tests that build every screen at four text sizes on 1024x600, 1366x768 and 1920x1040 working areas, and
   theme, tab order and inline message tests.
 

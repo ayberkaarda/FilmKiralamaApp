@@ -130,9 +130,13 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 ## 🖼️ Ekran Görüntüleri
 
 Ekranlar uydurma bir kiralama dükkânından, pencere açılmadan çizilir: uydurma film adları, yönetmenler ve hesaplar,
-example.com adresleri ve kodla çizilen afişler (renk geçişleri ve geometrik şekiller); bu yüzden gerçek bir film,
+example.com adresleri ve yapay zekâ görsel modeliyle üretilmiş afiş resimleri (üzerinde yazı yok, başlıkları kod basar); bu yüzden gerçek bir film,
 afiş, stüdyo ya da kişi görünmez. Her görüntü 2x sürümüne bağlanır. Yeniden çizmek için:
-`dotnet run --project tools/Screenshots -c Release -- screenshots`.
+`dotnet run --project tools/Screenshots -c Release -- screenshots`. Afiş resimleri `tools/Screenshots/posters` klasöründedir;
+`posters` komutu eksik olanları Gemini API ile üretir (`GEMINI_API_KEY` gerekir).
+
+> **Not:** bu ekran görüntülerindeki film afişleri yapay zekâ ile üretilmiş görsellerdir (Google Gemini). Yalnızca
+> uydurma filmleri gösterir; gerçek bir film, afiş, kişi ya da marka yer almaz.
 
 | | |
 |---|---|
@@ -218,7 +222,7 @@ FilmKiralamaApp/
 │   ├── FilmKiralama.Data.Tests/      # SQLite üzerinde servisler; SQL Server üzerinde yarışlar, kurulum anahtarı ve eski veritabanı yükseltmesi
 │   └── FilmKiralama.UI.Tests/        # Yapılandırma, hatalar, loglar, afişler, odak, yazma korumaları, temalar, her ekranın yerleşimi ve sekme sırası (pencere gösterilmez)
 ├── assets/                      # Özgün logo, simge ve afiş yer tutucusu, SVG kaynaklarıyla
-├── tools/Screenshots/           # Simge ve ekran görüntüsü aracı (pencere açmaz, uydurma veri, kodla çizilen afişler)
+├── tools/Screenshots/           # Simge ve ekran görüntüsü aracı (pencere açmaz, uydurma veri, yapay zekâ ile üretilmiş afişler ve kodla basılan başlıklar)
 ├── docs/
 │   ├── issue-setup-key.sql      # Kurulum anahtarı, veritabanı sahibi çalıştırır
 │   ├── grant-app-login.sql      # Uygulamanın kendi oturumunun yetkileri
